@@ -20,9 +20,11 @@ struct SettingsView: View {
     @State private var targetDeficit = 500.0
     @State private var reminderTime = Date.now
     @State private var baseURL = "https://api.deepseek.com"
-    @State private var modelName = "deepseek-v4-flash"
-    @State private var visionModelName = "deepseek-v4-flash"
+    @State private var modelName = "deepseek-v4-pro"
     @State private var apiKey = ""
+    @State private var visionBaseURL = "https://api.xiaomimimo.com/v1"
+    @State private var visionModelName = "mimo-v2-omni"
+    @State private var visionAPIKey = ""
     @State private var exportStart = Calendar.current.date(byAdding: .month, value: -1, to: .now) ?? .now
     @State private var exportEnd = Date.now
     @State private var shareURLs: [URL] = []
@@ -54,15 +56,22 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    TextField("Base URL", text: $baseURL)
+                    TextField("文字 Base URL", text: $baseURL)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
                     TextField("文字模型", text: $modelName)
                         .textInputAutocapitalization(.never)
+                    SecureField("文字 API Key（留空则不修改）", text: $apiKey)
+                        .textInputAutocapitalization(.never)
+
+                    TextField("视觉 Base URL", text: $visionBaseURL)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
                     TextField("视觉模型", text: $visionModelName)
                         .textInputAutocapitalization(.never)
-                    SecureField("API Key（留空则不修改）", text: $apiKey)
+                    SecureField("视觉 API Key（留空则不修改）", text: $visionAPIKey)
                         .textInputAutocapitalization(.never)
+
                     Button {
                         Task { await testAIConnection() }
                     } label: {
@@ -72,7 +81,7 @@ struct SettingsView: View {
                 } header: {
                     Text("AI 接口")
                 } footer: {
-                    Text("DeepSeek 默认 Base URL 为 https://api.deepseek.com，文字模型 deepseek-v4-flash 用于文字估算和每日建议。DeepSeek 官方接口目前仅支持文字，拍照或多图识别需要把视觉模型一项指向支持图片的 OpenAI 兼容服务，否则带图估算会报错。")
+                    Text("文字模型默认 DeepSeek（https://api.deepseek.com，deepseek-v4-pro），用于文字估算和每日建议。视觉模型默认小米 MiMo（https://api.xiaomimimo.com/v1，mimo-v2-omni），用于拍照/多图识别。两者是不同服务商，需分别填各自的 API Key。")
                 }
 
                 if !debugLog.isEmpty {
@@ -141,6 +150,7 @@ struct SettingsView: View {
         reminderTime = Calendar.current.todayAt(hour: profile.reminderHour, minute: profile.reminderMinute)
         baseURL = aiSettings.baseURL
         modelName = aiSettings.modelName
+        visionBaseURL = aiSettings.visionBaseURL
         visionModelName = aiSettings.visionModelName
     }
 
@@ -159,6 +169,7 @@ struct SettingsView: View {
 
         aiSettings.baseURL = baseURL
         aiSettings.modelName = modelName
+        aiSettings.visionBaseURL = visionBaseURL
         aiSettings.visionModelName = visionModelName
         aiSettings.updatedAt = .now
 
@@ -166,6 +177,10 @@ struct SettingsView: View {
             if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 try KeychainStore.shared.save(apiKey, for: aiSettings.apiKeychainKey)
                 apiKey = ""
+            }
+            if !visionAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                try KeychainStore.shared.save(visionAPIKey, for: aiSettings.visionAPIKeychainKey)
+                visionAPIKey = ""
             }
             try modelContext.save()
             message = "已保存"
@@ -189,17 +204,28 @@ struct SettingsView: View {
 
         aiSettings.baseURL = baseURL
         aiSettings.modelName = modelName
+        aiSettings.visionBaseURL = visionBaseURL
         aiSettings.visionModelName = visionModelName
         aiSettings.updatedAt = .now
 
         if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            appendLog("输入框未填新 Key，沿用 Keychain 中已有的 Key")
+            appendLog("文字 Key：输入框未填，沿用 Keychain 已有")
         } else {
             do {
                 try KeychainStore.shared.save(apiKey, for: aiSettings.apiKeychainKey)
-                appendLog("已把输入框中的 API Key 写入 Keychain")
+                appendLog("已写入文字 API Key")
             } catch {
-                appendLog("⚠️ 写入 Keychain 失败：\(error.localizedDescription)")
+                appendLog("⚠️ 写入文字 Key 失败：\(error.localizedDescription)")
+            }
+        }
+        if visionAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            appendLog("视觉 Key：输入框未填，沿用 Keychain 已有")
+        } else {
+            do {
+                try KeychainStore.shared.save(visionAPIKey, for: aiSettings.visionAPIKeychainKey)
+                appendLog("已写入视觉 API Key")
+            } catch {
+                appendLog("⚠️ 写入视觉 Key 失败：\(error.localizedDescription)")
             }
         }
 

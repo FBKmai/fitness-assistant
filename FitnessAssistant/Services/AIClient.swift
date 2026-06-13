@@ -71,10 +71,12 @@ final class AIClient: ObservableObject {
             userContent = .parts(parts)
         }
 
-        let model = imageDataList.isEmpty ? settings.modelName : settings.visionModelName
+        // 带图走视觉模型（MiMo），纯文字走文字模型（DeepSeek），各用各自的 Base URL 和 Key。
+        let isVision = !imageDataList.isEmpty
         let content = try await complete(
-            model: model,
-            settings: settings,
+            model: isVision ? settings.visionModelName : settings.modelName,
+            baseURL: isVision ? settings.visionBaseURL : settings.baseURL,
+            apiKeychainKey: isVision ? settings.visionAPIKeychainKey : settings.apiKeychainKey,
             messages: [
                 ChatMessage(role: "system", content: .text(systemPrompt)),
                 ChatMessage(role: "user", content: userContent)
@@ -108,7 +110,8 @@ final class AIClient: ObservableObject {
 
         let content = try await complete(
             model: settings.modelName,
-            settings: settings,
+            baseURL: settings.baseURL,
+            apiKeychainKey: settings.apiKeychainKey,
             messages: [
                 ChatMessage(role: "system", content: .text(systemPrompt)),
                 ChatMessage(role: "user", content: .text(snapshotJSON))
@@ -124,7 +127,8 @@ final class AIClient: ObservableObject {
     func testConnection(settings: AISettings) async throws -> String {
         let content = try await complete(
             model: settings.modelName,
-            settings: settings,
+            baseURL: settings.baseURL,
+            apiKeychainKey: settings.apiKeychainKey,
             messages: [
                 ChatMessage(role: "system", content: .text("You are a connectivity test endpoint. Reply with exactly OK.")),
                 ChatMessage(role: "user", content: .text("Reply OK."))
@@ -138,44 +142,71 @@ final class AIClient: ObservableObject {
         return trimmed.isEmpty ? "OK" : trimmed
     }
 
-    /// 详细诊断：把测试连接的每一步（读 Key、拼 URL、请求体、发请求、HTTP 状态码、原始返回）
-    /// 通过 onLine 实时回调出来，便于在真机界面上逐行排查。本方法不抛异常，错误都写进日志。
+    /// 详细诊断：依次验证「文字模型 · DeepSeek」和「视觉模型 · MiMo」两套配置
+    /// （二者 Base URL / Key / 模型各自独立），把每一步实时回调出来，不抛异常。
     @MainActor
     func diagnose(settings: AISettings, onLine: @escaping (String) -> Void) async {
-        onLine("Base URL：\(settings.baseURL)")
-        onLine("文字模型：\(settings.modelName)")
+        onLine("【文字模型 · DeepSeek】")
+        await diagnoseEndpoint(
+            baseURL: settings.baseURL,
+            model: settings.modelName,
+            apiKeychainKey: settings.apiKeychainKey,
+            onLine: onLine
+        )
+        onLine("")
+        onLine("【视觉模型 · MiMo】")
+        await diagnoseEndpoint(
+            baseURL: settings.visionBaseURL,
+            model: settings.visionModelName,
+            apiKeychainKey: settings.visionAPIKeychainKey,
+            onLine: onLine
+        )
+    }
+
+    /// 对单个 OpenAI 兼容端点做一次最小连通性请求，每一步通过 onLine 回调。
+    @MainActor
+    private func diagnoseEndpoint(
+        baseURL: String,
+        model: String,
+        apiKeychainKey: String,
+        onLine: @escaping (String) -> Void
+    ) async {
+        onLine("Base URL：\(baseURL)")
+        onLine("模型：\(model)")
 
         let apiKey: String?
         do {
-            apiKey = try keychain.read(settings.apiKeychainKey)
+            apiKey = try keychain.read(apiKeychainKey)
         } catch {
             onLine("❌ 读取 Keychain 失败：\(error.localizedDescription)")
             return
         }
         guard let apiKey, !apiKey.isEmpty else {
-            onLine("❌ Keychain 中没有 API Key。请在上方输入后先点「保存」，或重新输入再测。")
+            onLine("❌ Keychain（\(apiKeychainKey)）中没有 API Key。请在上方输入后先点「保存」，或重新输入再测。")
             return
         }
         onLine("API Key：\(apiKey)（长度 \(apiKey.count)）")
 
-        guard let url = chatCompletionsURL(from: settings.baseURL) else {
+        guard let url = chatCompletionsURL(from: baseURL) else {
             onLine("❌ Base URL 无效，无法拼接请求地址。")
             return
         }
         onLine("请求地址：\(url.absoluteString)")
 
-        let disableThinking = settings.baseURL.localizedCaseInsensitiveContains("deepseek")
+        let isMiMo = baseURL.localizedCaseInsensitiveContains("xiaomimimo")
+        let disableThinking = baseURL.localizedCaseInsensitiveContains("deepseek")
         onLine("关闭思考模式：\(disableThinking ? "是" : "否")")
 
         let requestBody = ChatRequest(
-            model: settings.modelName,
+            model: model,
             messages: [
                 ChatMessage(role: "system", content: .text("You are a connectivity test endpoint. Reply with exactly OK.")),
                 ChatMessage(role: "user", content: .text("Reply OK."))
             ],
             temperature: 0,
             responseFormat: nil,
-            maxTokens: 32,
+            maxTokens: isMiMo ? nil : 64,
+            maxCompletionTokens: isMiMo ? 64 : nil,
             thinking: disableThinking ? ThinkingConfig(type: "disabled") : nil
         )
 
@@ -183,6 +214,7 @@ final class AIClient: ObservableObject {
         request.httpMethod = "POST"
         request.timeoutInterval = 30
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(apiKey, forHTTPHeaderField: "api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         do {
             let body = try JSONEncoder().encode(requestBody)
@@ -212,43 +244,46 @@ final class AIClient: ObservableObject {
         }
         let bodyText = String(data: data, encoding: .utf8) ?? "(返回内容无法解码为 UTF-8)"
         onLine("原始返回：\(bodyText)")
-        onLine("=== 诊断结束 ===")
     }
 
     private func complete(
         model: String,
-        settings: AISettings,
+        baseURL: String,
+        apiKeychainKey: String,
         messages: [ChatMessage],
         temperature: Double,
         jsonMode: Bool,
         maxTokens: Int,
         timeout: TimeInterval = 120
     ) async throws -> String {
-        guard let apiKey = try keychain.read(settings.apiKeychainKey), !apiKey.isEmpty else {
+        guard let apiKey = try keychain.read(apiKeychainKey), !apiKey.isEmpty else {
             throw AIClientError.missingAPIKey
         }
 
-        guard let url = chatCompletionsURL(from: settings.baseURL) else {
+        guard let url = chatCompletionsURL(from: baseURL) else {
             throw AIClientError.invalidBaseURL
         }
 
-        // DeepSeek 的 deepseek-v4-flash 等模型默认开启 thinking(思考)模式：会先生成大段
-        // reasoning_content 再产出正文，导致响应缓慢容易超时，且在 max_tokens 较小时正文为空。
-        // 仅当 Base URL 指向 DeepSeek 时显式关闭，避免向其它 OpenAI 兼容服务发送未知字段。
-        let disableThinking = settings.baseURL.localizedCaseInsensitiveContains("deepseek")
+        // DeepSeek 的 deepseek-v4 系列默认开启 thinking(思考)模式：会先生成大段 reasoning_content
+        // 再产出正文，导致响应缓慢容易超时，仅当 Base URL 指向 DeepSeek 时显式关闭。
+        let disableThinking = baseURL.localizedCaseInsensitiveContains("deepseek")
+        // 小米 MiMo 用 max_completion_tokens 而非 max_tokens。
+        let isMiMo = baseURL.localizedCaseInsensitiveContains("xiaomimimo")
         let requestBody = ChatRequest(
             model: model,
             messages: messages,
             temperature: temperature,
             responseFormat: jsonMode ? ChatResponseFormat(type: "json_object") : nil,
-            maxTokens: maxTokens,
+            maxTokens: isMiMo ? nil : maxTokens,
+            maxCompletionTokens: isMiMo ? maxTokens : nil,
             thinking: disableThinking ? ThinkingConfig(type: "disabled") : nil
         )
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        // 模型推理（尤其是带图片或思考模式）可能较慢，默认放宽到 120 秒；测试连接等场景可传入更短超时快速失败。
         request.timeoutInterval = timeout
+        // Authorization 适配 DeepSeek/OpenAI；api-key 适配小米 MiMo。两者同时下发，互不影响。
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(apiKey, forHTTPHeaderField: "api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(requestBody)
 
@@ -274,9 +309,9 @@ final class AIClient: ObservableObject {
         if let content = message?.content, !content.isEmpty {
             return content
         }
-        // 正文为空但有思考内容：说明模型仍处于思考模式且回复被 max_tokens 截断在推理阶段。
+        // 正文为空但有思考内容：模型仍在思考模式且回复被 token 上限截断在推理阶段。
         if let reasoning = message?.reasoningContent, !reasoning.isEmpty {
-            throw AIClientError.transport("AI 只返回了思考内容、没有正式回答，通常是模型处于思考(thinking)模式且回复被 max_tokens 截断。请确认 Base URL 指向 DeepSeek（会自动关闭思考模式）后重试。")
+            throw AIClientError.transport("AI 只返回了思考内容、没有正式回答，通常是模型处于思考(thinking)模式且回复被 token 上限截断，请调大 token 上限或确认模型后重试。")
         }
         throw AIClientError.emptyResponse
     }
@@ -306,13 +341,13 @@ final class AIClient: ObservableObject {
                 NSURLErrorServerCertificateNotYetValid,
                 NSURLErrorClientCertificateRejected,
                 NSURLErrorClientCertificateRequired:
-                return "TLS错误导致安全连接失败。请确认 Base URL 使用 https://api.deepseek.com，不要带空格，并检查手机时间和网络代理。"
+                return "TLS错误导致安全连接失败。请确认 Base URL 正确、不要带空格，并检查手机时间和网络代理。"
             case NSURLErrorCannotFindHost:
-                return "无法找到 AI 服务域名。请检查 Base URL，例如 DeepSeek 使用 https://api.deepseek.com。"
+                return "无法找到 AI 服务域名。请检查 Base URL，例如 DeepSeek 用 https://api.deepseek.com、MiMo 用 https://api.xiaomimimo.com/v1。"
             case NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost, NSURLErrorNotConnectedToInternet:
                 return "无法连接 AI 服务。请检查网络、代理或稍后重试。"
             case NSURLErrorTimedOut:
-                return "AI 请求超时。DeepSeek 推理较慢或网络不稳定时可稍后重试，也可检查代理设置。"
+                return "AI 请求超时。模型推理较慢或网络不稳定时可稍后重试，也可检查代理设置。"
             default:
                 break
             }
@@ -327,6 +362,7 @@ private struct ChatRequest: Encodable {
     var temperature: Double
     var responseFormat: ChatResponseFormat?
     var maxTokens: Int?
+    var maxCompletionTokens: Int?
     var thinking: ThinkingConfig?
 
     enum CodingKeys: String, CodingKey {
@@ -335,6 +371,7 @@ private struct ChatRequest: Encodable {
         case temperature
         case responseFormat = "response_format"
         case maxTokens = "max_tokens"
+        case maxCompletionTokens = "max_completion_tokens"
         case thinking
     }
 }

@@ -13,9 +13,11 @@ struct OnboardingView: View {
     @State private var targetDeficit = 500.0
     @State private var reminderTime = Calendar.current.todayAt(hour: 22, minute: 30)
     @State private var baseURL = "https://api.deepseek.com"
-    @State private var modelName = "deepseek-v4-flash"
-    @State private var visionModelName = "deepseek-v4-flash"
+    @State private var modelName = "deepseek-v4-pro"
     @State private var apiKey = ""
+    @State private var visionBaseURL = "https://api.xiaomimimo.com/v1"
+    @State private var visionModelName = "mimo-v2-omni"
+    @State private var visionAPIKey = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -45,14 +47,20 @@ struct OnboardingView: View {
                 }
 
                 Section("AI 接口") {
-                    TextField("Base URL", text: $baseURL)
+                    TextField("文字 Base URL", text: $baseURL)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
                     TextField("文字模型", text: $modelName)
                         .textInputAutocapitalization(.never)
+                    SecureField("文字 API Key", text: $apiKey)
+                        .textInputAutocapitalization(.never)
+
+                    TextField("视觉 Base URL", text: $visionBaseURL)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
                     TextField("视觉模型", text: $visionModelName)
                         .textInputAutocapitalization(.never)
-                    SecureField("API Key", text: $apiKey)
+                    SecureField("视觉 API Key", text: $visionAPIKey)
                         .textInputAutocapitalization(.never)
                 }
 
@@ -95,12 +103,16 @@ struct OnboardingView: View {
         let settings = AISettings(
             baseURL: baseURL,
             modelName: modelName,
+            visionBaseURL: visionBaseURL,
             visionModelName: visionModelName
         )
 
         do {
             if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 try KeychainStore.shared.save(apiKey, for: settings.apiKeychainKey)
+            }
+            if !visionAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                try KeychainStore.shared.save(visionAPIKey, for: settings.visionAPIKeychainKey)
             }
             modelContext.insert(profile)
             modelContext.insert(settings)
