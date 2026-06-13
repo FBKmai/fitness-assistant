@@ -131,7 +131,8 @@ final class AIClient: ObservableObject {
             ],
             temperature: 0,
             jsonMode: false,
-            maxTokens: 32
+            maxTokens: 32,
+            timeout: 30
         )
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "OK" : trimmed
@@ -143,7 +144,8 @@ final class AIClient: ObservableObject {
         messages: [ChatMessage],
         temperature: Double,
         jsonMode: Bool,
-        maxTokens: Int
+        maxTokens: Int,
+        timeout: TimeInterval = 120
     ) async throws -> String {
         guard let apiKey = try keychain.read(settings.apiKeychainKey), !apiKey.isEmpty else {
             throw AIClientError.missingAPIKey
@@ -167,8 +169,8 @@ final class AIClient: ObservableObject {
         )
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        // 模型推理（尤其是带图片或思考模式）可能较慢，放宽到 120 秒，避免默认 60 秒过早超时。
-        request.timeoutInterval = 120
+        // 模型推理（尤其是带图片或思考模式）可能较慢，默认放宽到 120 秒；测试连接等场景可传入更短超时快速失败。
+        request.timeoutInterval = timeout
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(requestBody)

@@ -29,6 +29,8 @@ struct SettingsView: View {
     @State private var showingShare = false
     @State private var isTestingAI = false
     @State private var message: String?
+    @State private var testResult: String = ""
+    @State private var showingTestResult = false
 
     var body: some View {
         NavigationStack {
@@ -115,6 +117,11 @@ struct SettingsView: View {
             .sheet(isPresented: $showingShare) {
                 ActivityView(items: shareURLs.map { $0 as Any })
             }
+            .alert("AI 测试结果", isPresented: $showingTestResult) {
+                Button("好") {}
+            } message: {
+                Text(testResult)
+            }
         }
     }
 
@@ -163,9 +170,12 @@ struct SettingsView: View {
 
     @MainActor
     private func testAIConnection() async {
-        guard let aiSettings = settings.first else { return }
+        guard let aiSettings = settings.first else {
+            testResult = "未找到 AI 设置（AISettings 为空），请先在引导页完成配置或点「保存」后重试。"
+            showingTestResult = true
+            return
+        }
         isTestingAI = true
-        message = nil
         defer { isTestingAI = false }
 
         aiSettings.baseURL = baseURL
@@ -173,16 +183,19 @@ struct SettingsView: View {
         aiSettings.visionModelName = visionModelName
         aiSettings.updatedAt = .now
 
+        // 把当前配置一并显示出来，便于在真机上直接发现 Base URL 多空格、模型名写错等问题。
+        let diagnostics = "Base URL：\(baseURL)\n模型：\(modelName)"
         do {
             if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 try KeychainStore.shared.save(apiKey, for: aiSettings.apiKeychainKey)
             }
             try modelContext.save()
             let response = try await aiClient.testConnection(settings: aiSettings)
-            message = "AI 模型连接成功：\(response)"
+            testResult = "✅ 连接成功\n\(diagnostics)\n返回：\(response)"
         } catch {
-            message = error.localizedDescription
+            testResult = "❌ 测试失败\n\(diagnostics)\n错误：\(error.localizedDescription)"
         }
+        showingTestResult = true
     }
 
     @MainActor
