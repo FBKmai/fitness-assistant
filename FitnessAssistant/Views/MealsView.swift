@@ -59,8 +59,8 @@ struct MealEditorView: View {
     @Query private var settings: [AISettings]
 
     @State private var textDescription = ""
-    @State private var selectedPhoto: PhotosPickerItem?
-    @State private var imageData: Data?
+    @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var imageDataList: [Data] = []
     @State private var showingCamera = false
     @State private var totalCalories = ""
     @State private var proteinGrams = ""
@@ -72,7 +72,7 @@ struct MealEditorView: View {
     @State private var errorMessage: String?
 
     private var canEstimate: Bool {
-        !textDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || imageData != nil
+        !textDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !imageDataList.isEmpty
     }
 
     var body: some View {
@@ -81,21 +81,47 @@ struct MealEditorView: View {
                 Section("记录") {
                     TextEditor(text: $textDescription)
                         .frame(minHeight: 96)
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        Label("从相册选择", systemImage: "photo")
+                    PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 8, matching: .images) {
+                        Label("从相册选择多张", systemImage: "photo.on.rectangle")
                     }
                     Button {
                         showingCamera = true
                     } label: {
-                        Label("拍照", systemImage: "camera")
+                        Label("拍照追加", systemImage: "camera")
                     }
 
-                    if let imageData, let image = UIImage(data: imageData) {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxHeight: 220)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    if !imageDataList.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(Array(imageDataList.enumerated()), id: \.offset) { index, imageData in
+                                    if let image = UIImage(data: imageData) {
+                                        ZStack(alignment: .topTrailing) {
+                                            Image(uiImage: image)
+                                                .resizable()
+                                                .scaledToFill()
+                                                .frame(width: 96, height: 96)
+                                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                            Button {
+                                                imageDataList.remove(at: index)
+                                                if selectedPhotos.indices.contains(index) {
+                                                    selectedPhotos.remove(at: index)
+                                                }
+                                            } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .symbolRenderingMode(.palette)
+                                                    .foregroundStyle(.white, .black.opacity(0.55))
+                                            }
+                                            .buttonStyle(.plain)
+                                            .padding(4)
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                        Text("已选择 \(imageDataList.count) 张图片")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -154,25 +180,31 @@ struct MealEditorView: View {
                         .disabled(totalCalories.doubleValue == nil)
                 }
             }
-            .onChange(of: selectedPhoto) { _, newValue in
-                Task { await loadPhoto(newValue) }
+            .onChange(of: selectedPhotos) { _, newValue in
+                Task { await loadPhotos(newValue) }
             }
             .sheet(isPresented: $showingCamera) {
                 CameraPicker { image in
-                    imageData = ImageStorage.compressedJPEGData(from: image)
+                    if let data = ImageStorage.compressedJPEGData(from: image) {
+                        imageDataList.append(data)
+                    }
                 }
             }
         }
     }
 
     @MainActor
-    private func loadPhoto(_ item: PhotosPickerItem?) async {
-        guard let item else { return }
+    private func loadPhotos(_ items: [PhotosPickerItem]) async {
         do {
-            if let data = try await item.loadTransferable(type: Data.self),
-               let image = UIImage(data: data) {
-                imageData = ImageStorage.compressedJPEGData(from: image)
+            var loadedImages: [Data] = []
+            for item in items {
+                if let data = try await item.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data),
+                   let compressed = ImageStorage.compressedJPEGData(from: image) {
+                    loadedImages.append(compressed)
+                }
             }
+            imageDataList = loadedImages
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -188,7 +220,7 @@ struct MealEditorView: View {
         do {
             let estimate = try await aiClient.estimateMeal(
                 text: textDescription,
-                imageData: imageData,
+                imageDataList: imageDataList,
                 settings: aiSettings
             )
             totalCalories = String(format: "%.0f", estimate.totalCalories)
@@ -208,8 +240,8 @@ struct MealEditorView: View {
     private func save() {
         do {
             let photoFileName: String?
-            if let imageData {
-                photoFileName = try ImageStorage.saveMealPhoto(data: imageData)
+            if let firstImageData = imageDataList.first {
+                photoFileName = try ImageStorage.saveMealPhoto(data: firstImageData)
             } else {
                 photoFileName = nil
             }

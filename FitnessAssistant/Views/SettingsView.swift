@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var aiClient: AIClient
     @EnvironmentObject private var healthKitService: HealthKitService
     @EnvironmentObject private var notificationScheduler: NotificationScheduler
 
@@ -18,14 +19,15 @@ struct SettingsView: View {
     @State private var birthday = Date.now
     @State private var targetDeficit = 500.0
     @State private var reminderTime = Date.now
-    @State private var baseURL = "https://api.openai.com/v1"
-    @State private var modelName = "gpt-4o-mini"
-    @State private var visionModelName = "gpt-4o-mini"
+    @State private var baseURL = "https://api.deepseek.com"
+    @State private var modelName = "deepseek-v4-flash"
+    @State private var visionModelName = "deepseek-v4-flash"
     @State private var apiKey = ""
     @State private var exportStart = Calendar.current.date(byAdding: .month, value: -1, to: .now) ?? .now
     @State private var exportEnd = Date.now
     @State private var shareURLs: [URL] = []
     @State private var showingShare = false
+    @State private var isTestingAI = false
     @State private var message: String?
 
     var body: some View {
@@ -60,6 +62,12 @@ struct SettingsView: View {
                         .textInputAutocapitalization(.never)
                     SecureField("API Key（留空则不修改）", text: $apiKey)
                         .textInputAutocapitalization(.never)
+                    Button {
+                        Task { await testAIConnection() }
+                    } label: {
+                        Label(isTestingAI ? "测试中" : "测试 AI 模型", systemImage: "bolt.horizontal.circle")
+                    }
+                    .disabled(isTestingAI)
                 }
 
                 Section("权限") {
@@ -144,6 +152,30 @@ struct SettingsView: View {
             }
             try modelContext.save()
             message = "已保存"
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func testAIConnection() async {
+        guard let aiSettings = settings.first else { return }
+        isTestingAI = true
+        message = nil
+        defer { isTestingAI = false }
+
+        aiSettings.baseURL = baseURL
+        aiSettings.modelName = modelName
+        aiSettings.visionModelName = visionModelName
+        aiSettings.updatedAt = .now
+
+        do {
+            if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                try KeychainStore.shared.save(apiKey, for: aiSettings.apiKeychainKey)
+            }
+            try modelContext.save()
+            let response = try await aiClient.testConnection(settings: aiSettings)
+            message = "AI 模型连接成功：\(response)"
         } catch {
             message = error.localizedDescription
         }

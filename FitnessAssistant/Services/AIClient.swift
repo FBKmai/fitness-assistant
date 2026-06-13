@@ -7,14 +7,22 @@ enum AIClientError: LocalizedError {
     case emptyResponse
     case invalidResponse(Int, String)
     case invalidJSON(String)
+    case transport(String)
 
     var errorDescription: String? {
         switch self {
-        case .missingAPIKey: "请先在设置中填写 API Key"
-        case .invalidBaseURL: "AI Base URL 无效"
-        case .emptyResponse: "AI 没有返回内容"
-        case .invalidResponse(let status, let body): "AI 请求失败：HTTP \(status) \(body)"
-        case .invalidJSON(let content): "AI 返回的 JSON 无法解析：\(content)"
+        case .missingAPIKey:
+            "请先在设置中填写 API Key"
+        case .invalidBaseURL:
+            "AI Base URL 无效"
+        case .emptyResponse:
+            "AI 没有返回内容"
+        case .invalidResponse(let status, let body):
+            "AI 请求失败：HTTP \(status) \(body)"
+        case .invalidJSON(let content):
+            "AI 返回的 JSON 无法解析：\(content)"
+        case .transport(let message):
+            message
         }
     }
 }
@@ -29,6 +37,10 @@ final class AIClient: ObservableObject {
     }
 
     func estimateMeal(text: String, imageData: Data?, settings: AISettings) async throws -> MealEstimate {
+        try await estimateMeal(text: text, imageDataList: imageData.map { [$0] } ?? [], settings: settings)
+    }
+
+    func estimateMeal(text: String, imageDataList: [Data], settings: AISettings) async throws -> MealEstimate {
         let systemPrompt = """
         你是一个营养记录助手。根据用户的文字或餐食照片估算热量和三大营养素。
         只返回 JSON，不要使用 markdown。所有数值使用 kcal 或克。
@@ -49,17 +61,17 @@ final class AIClient: ObservableObject {
             : text
 
         let userContent: ChatContent
-        if let imageData {
-            let base64 = imageData.base64EncodedString()
-            userContent = .parts([
-                .text(userText),
-                .imageURL("data:image/jpeg;base64,\(base64)")
-            ])
-        } else {
+        if imageDataList.isEmpty {
             userContent = .text(userText)
+        } else {
+            var parts: [ChatContentPart] = [.text(userText)]
+            parts += imageDataList.map { imageData in
+                .imageURL("data:image/jpeg;base64,\(imageData.base64EncodedString())")
+            }
+            userContent = .parts(parts)
         }
 
-        let model = imageData == nil ? settings.modelName : settings.visionModelName
+        let model = imageDataList.isEmpty ? settings.modelName : settings.visionModelName
         let content = try await complete(
             model: model,
             settings: settings,
@@ -67,7 +79,8 @@ final class AIClient: ObservableObject {
                 ChatMessage(role: "system", content: .text(systemPrompt)),
                 ChatMessage(role: "user", content: userContent)
             ],
-            temperature: 0.2
+            temperature: 0.2,
+            jsonMode: true
         )
 
         return try AIResponseParser.decodeJSONObject(MealEstimate.self, from: content)
@@ -99,38 +112,64 @@ final class AIClient: ObservableObject {
                 ChatMessage(role: "system", content: .text(systemPrompt)),
                 ChatMessage(role: "user", content: .text(snapshotJSON))
             ],
-            temperature: 0.4
+            temperature: 0.4,
+            jsonMode: true
         )
 
         return try AIResponseParser.decodeJSONObject(DailyAdvice.self, from: content)
+    }
+
+    func testConnection(settings: AISettings) async throws -> String {
+        let content = try await complete(
+            model: settings.modelName,
+            settings: settings,
+            messages: [
+                ChatMessage(role: "system", content: .text("You are a connectivity test endpoint. Reply with exactly OK.")),
+                ChatMessage(role: "user", content: .text("Reply OK."))
+            ],
+            temperature: 0,
+            jsonMode: false
+        )
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "OK" : trimmed
     }
 
     private func complete(
         model: String,
         settings: AISettings,
         messages: [ChatMessage],
-        temperature: Double
+        temperature: Double,
+        jsonMode: Bool
     ) async throws -> String {
         guard let apiKey = try keychain.read(settings.apiKeychainKey), !apiKey.isEmpty else {
             throw AIClientError.missingAPIKey
         }
 
-        var trimmedBaseURL = settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        while trimmedBaseURL.hasSuffix("/") {
-            trimmedBaseURL.removeLast()
-        }
-        guard let url = URL(string: "\(trimmedBaseURL)/chat/completions") else {
+        guard let url = chatCompletionsURL(from: settings.baseURL) else {
             throw AIClientError.invalidBaseURL
         }
 
-        let requestBody = ChatRequest(model: model, messages: messages, temperature: temperature)
+        let requestBody = ChatRequest(
+            model: model,
+            messages: messages,
+            temperature: temperature,
+            responseFormat: jsonMode ? ChatResponseFormat(type: "json_object") : nil,
+            maxTokens: jsonMode ? 2000 : 32
+        )
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(requestBody)
 
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw AIClientError.transport(Self.transportMessage(for: error))
+        }
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw AIClientError.emptyResponse
         }
@@ -147,12 +186,62 @@ final class AIClient: ObservableObject {
         return content
     }
 
+    private func chatCompletionsURL(from baseURL: String) -> URL? {
+        var trimmedBaseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedBaseURL.localizedCaseInsensitiveContains("://") {
+            trimmedBaseURL = "https://\(trimmedBaseURL)"
+        }
+        while trimmedBaseURL.hasSuffix("/") {
+            trimmedBaseURL.removeLast()
+        }
+        if trimmedBaseURL.hasSuffix("/chat/completions") {
+            return URL(string: trimmedBaseURL)
+        }
+        return URL(string: "\(trimmedBaseURL)/chat/completions")
+    }
+
+    private static func transportMessage(for error: Error) -> String {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorSecureConnectionFailed,
+                NSURLErrorServerCertificateHasBadDate,
+                NSURLErrorServerCertificateUntrusted,
+                NSURLErrorServerCertificateHasUnknownRoot,
+                NSURLErrorServerCertificateNotYetValid,
+                NSURLErrorClientCertificateRejected,
+                NSURLErrorClientCertificateRequired:
+                return "TLS错误导致安全连接失败。请确认 Base URL 使用 https://api.deepseek.com，不要带空格，并检查手机时间和网络代理。"
+            case NSURLErrorCannotFindHost:
+                return "无法找到 AI 服务域名。请检查 Base URL，例如 DeepSeek 使用 https://api.deepseek.com。"
+            case NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost, NSURLErrorNotConnectedToInternet:
+                return "无法连接 AI 服务。请检查网络、代理或稍后重试。"
+            default:
+                break
+            }
+        }
+        return error.localizedDescription
+    }
 }
 
 private struct ChatRequest: Encodable {
     var model: String
     var messages: [ChatMessage]
     var temperature: Double
+    var responseFormat: ChatResponseFormat?
+    var maxTokens: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case messages
+        case temperature
+        case responseFormat = "response_format"
+        case maxTokens = "max_tokens"
+    }
+}
+
+private struct ChatResponseFormat: Encodable {
+    var type: String
 }
 
 private struct ChatMessage: Encodable {

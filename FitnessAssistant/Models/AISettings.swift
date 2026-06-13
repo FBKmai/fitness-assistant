@@ -13,9 +13,9 @@ final class AISettings {
 
     init(
         id: UUID = UUID(),
-        baseURL: String = "https://api.openai.com/v1",
-        modelName: String = "gpt-4o-mini",
-        visionModelName: String = "gpt-4o-mini",
+        baseURL: String = "https://api.deepseek.com",
+        modelName: String = "deepseek-v4-flash",
+        visionModelName: String = "deepseek-v4-flash",
         apiKeychainKey: String = "openai_compatible_api_key",
         createdAt: Date = .now,
         updatedAt: Date = .now

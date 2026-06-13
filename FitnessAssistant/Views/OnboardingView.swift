@@ -12,9 +12,9 @@ struct OnboardingView: View {
     @State private var birthday = Calendar.current.date(byAdding: .year, value: -30, to: .now) ?? .now
     @State private var targetDeficit = 500.0
     @State private var reminderTime = Calendar.current.todayAt(hour: 22, minute: 30)
-    @State private var baseURL = "https://api.openai.com/v1"
-    @State private var modelName = "gpt-4o-mini"
-    @State private var visionModelName = "gpt-4o-mini"
+    @State private var baseURL = "https://api.deepseek.com"
+    @State private var modelName = "deepseek-v4-flash"
+    @State private var visionModelName = "deepseek-v4-flash"
     @State private var apiKey = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
