@@ -53,7 +53,7 @@ jobs:
             -destination "generic/platform=iOS" \
             -derivedDataPath "$DERIVED_DATA" \
             CODE_SIGNING_ALLOWED=NO \
-            clean build
+            clean build 2>&1 | tee "$RUNNER_TEMP/xcodebuild-unsigned.log"
 
           APP_PATH="$(find "$DERIVED_DATA/Build/Products/${CONFIGURATION}-iphoneos" -maxdepth 1 -name "*.app" -print -quit)"
           if [ -z "$APP_PATH" ]; then
@@ -138,7 +138,7 @@ jobs:
             DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
             PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_IDENTIFIER" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-            clean archive
+            clean archive 2>&1 | tee "$RUNNER_TEMP/xcodebuild-signed-archive.log"
 
       - name: Export signed IPA
         if: ${{ inputs.signing_mode == 'signed' }}
@@ -175,7 +175,7 @@ jobs:
             -exportArchive \
             -archivePath "$RUNNER_TEMP/FitnessAssistant.xcarchive" \
             -exportPath "$EXPORT_PATH" \
-            -exportOptionsPlist "$EXPORT_OPTIONS"
+            -exportOptionsPlist "$EXPORT_OPTIONS" 2>&1 | tee "$RUNNER_TEMP/xcodebuild-signed-export.log"
 
           mkdir -p artifacts
           IPA_PATH="$(find "$EXPORT_PATH" -maxdepth 1 -name "*.ipa" -print -quit)"
@@ -191,6 +191,14 @@ jobs:
           name: fitness-assistant-ipa-${{ inputs.signing_mode }}
           path: artifacts/*.ipa
           if-no-files-found: error
+
+      - name: Upload xcodebuild logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-logs-${{ inputs.signing_mode }}
+          path: ${{ runner.temp }}/xcodebuild-*.log
+          if-no-files-found: ignore
 
       - name: Clean signing keychain
         if: ${{ always() && inputs.signing_mode == 'signed' }}

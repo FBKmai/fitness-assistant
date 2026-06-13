@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 enum AIClientError: LocalizedError {
     case missingAPIKey
