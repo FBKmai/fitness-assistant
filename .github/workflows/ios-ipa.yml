@@ -58,11 +58,13 @@ jobs:
             -destination "generic/platform=iOS" \
             -derivedDataPath "$DERIVED_DATA" \
             CODE_SIGNING_ALLOWED=NO \
+            PRODUCT_NAME=FitnessAssistant \
             clean build 2>&1 | tee "$RUNNER_TEMP/xcodebuild-unsigned.log"
 
           APP_PATH="$(find "$DERIVED_DATA/Build/Products/${CONFIGURATION}-iphoneos" -maxdepth 1 -name "*.app" -print -quit)"
           if [ -z "$APP_PATH" ]; then
             echo "Could not find built .app"
+            find "$DERIVED_DATA/Build/Products" -maxdepth 3 -print
             exit 1
           fi
 
@@ -143,6 +145,7 @@ jobs:
             DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
             PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_IDENTIFIER" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            PRODUCT_NAME=FitnessAssistant \
             clean archive 2>&1 | tee "$RUNNER_TEMP/xcodebuild-signed-archive.log"
 
       - name: Export signed IPA
