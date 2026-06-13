@@ -138,6 +138,83 @@ final class AIClient: ObservableObject {
         return trimmed.isEmpty ? "OK" : trimmed
     }
 
+    /// 详细诊断：把测试连接的每一步（读 Key、拼 URL、请求体、发请求、HTTP 状态码、原始返回）
+    /// 通过 onLine 实时回调出来，便于在真机界面上逐行排查。本方法不抛异常，错误都写进日志。
+    @MainActor
+    func diagnose(settings: AISettings, onLine: @escaping (String) -> Void) async {
+        onLine("Base URL：\(settings.baseURL)")
+        onLine("文字模型：\(settings.modelName)")
+
+        let apiKey: String?
+        do {
+            apiKey = try keychain.read(settings.apiKeychainKey)
+        } catch {
+            onLine("❌ 读取 Keychain 失败：\(error.localizedDescription)")
+            return
+        }
+        guard let apiKey, !apiKey.isEmpty else {
+            onLine("❌ Keychain 中没有 API Key。请在上方输入后先点「保存」，或重新输入再测。")
+            return
+        }
+        onLine("API Key：\(apiKey)（长度 \(apiKey.count)）")
+
+        guard let url = chatCompletionsURL(from: settings.baseURL) else {
+            onLine("❌ Base URL 无效，无法拼接请求地址。")
+            return
+        }
+        onLine("请求地址：\(url.absoluteString)")
+
+        let disableThinking = settings.baseURL.localizedCaseInsensitiveContains("deepseek")
+        onLine("关闭思考模式：\(disableThinking ? "是" : "否")")
+
+        let requestBody = ChatRequest(
+            model: settings.modelName,
+            messages: [
+                ChatMessage(role: "system", content: .text("You are a connectivity test endpoint. Reply with exactly OK.")),
+                ChatMessage(role: "user", content: .text("Reply OK."))
+            ],
+            temperature: 0,
+            responseFormat: nil,
+            maxTokens: 32,
+            thinking: disableThinking ? ThinkingConfig(type: "disabled") : nil
+        )
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        do {
+            let body = try JSONEncoder().encode(requestBody)
+            request.httpBody = body
+            onLine("请求体：\(String(data: body, encoding: .utf8) ?? "(编码失败)")")
+        } catch {
+            onLine("❌ 请求体编码失败：\(error.localizedDescription)")
+            return
+        }
+
+        onLine("⏳ 正在发送请求（超时 30 秒）…")
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            let nsError = error as NSError
+            onLine("❌ 网络请求失败：\(Self.transportMessage(for: error))")
+            onLine("   错误详情：domain=\(nsError.domain) code=\(nsError.code)")
+            return
+        }
+
+        if let http = response as? HTTPURLResponse {
+            onLine("✅ 已收到响应，HTTP 状态码：\(http.statusCode)")
+        } else {
+            onLine("⚠️ 收到响应，但不是标准 HTTP 响应。")
+        }
+        let bodyText = String(data: data, encoding: .utf8) ?? "(返回内容无法解码为 UTF-8)"
+        onLine("原始返回：\(bodyText)")
+        onLine("=== 诊断结束 ===")
+    }
+
     private func complete(
         model: String,
         settings: AISettings,

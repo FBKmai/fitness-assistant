@@ -10,3 +10,7 @@
 *.xcscheme text eol=lf
 *.xcworkspacedata text eol=lf
 *.json text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary

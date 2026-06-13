@@ -29,8 +29,7 @@ struct SettingsView: View {
     @State private var showingShare = false
     @State private var isTestingAI = false
     @State private var message: String?
-    @State private var testResult: String = ""
-    @State private var showingTestResult = false
+    @State private var debugLog: String = ""
 
     var body: some View {
         NavigationStack {
@@ -76,6 +75,18 @@ struct SettingsView: View {
                     Text("DeepSeek 默认 Base URL 为 https://api.deepseek.com，文字模型 deepseek-v4-flash 用于文字估算和每日建议。DeepSeek 官方接口目前仅支持文字，拍照或多图识别需要把视觉模型一项指向支持图片的 OpenAI 兼容服务，否则带图估算会报错。")
                 }
 
+                if !debugLog.isEmpty {
+                    Section {
+                        Text(debugLog)
+                            .font(.system(.footnote, design: .monospaced))
+                            .textSelection(.enabled)
+                    } header: {
+                        Text("调试日志")
+                    } footer: {
+                        Text("长按可复制全部内容发给开发者排查。")
+                    }
+                }
+
                 Section("权限") {
                     Button {
                         Task { await requestHealthKit() }
@@ -116,11 +127,6 @@ struct SettingsView: View {
             .onAppear(perform: load)
             .sheet(isPresented: $showingShare) {
                 ActivityView(items: shareURLs.map { $0 as Any })
-            }
-            .alert("AI 测试结果", isPresented: $showingTestResult) {
-                Button("好") {}
-            } message: {
-                Text(testResult)
             }
         }
     }
@@ -171,31 +177,47 @@ struct SettingsView: View {
     @MainActor
     private func testAIConnection() async {
         guard let aiSettings = settings.first else {
-            testResult = "未找到 AI 设置（AISettings 为空），请先在引导页完成配置或点「保存」后重试。"
-            showingTestResult = true
+            debugLog = ""
+            appendLog("❌ 未找到 AISettings（为空）。请先完成引导页配置，或点右上角「保存」后重试。")
             return
         }
         isTestingAI = true
+        debugLog = ""
         defer { isTestingAI = false }
+
+        appendLog("点击测试，开始诊断")
 
         aiSettings.baseURL = baseURL
         aiSettings.modelName = modelName
         aiSettings.visionModelName = visionModelName
         aiSettings.updatedAt = .now
 
-        // 把当前配置一并显示出来，便于在真机上直接发现 Base URL 多空格、模型名写错等问题。
-        let diagnostics = "Base URL：\(baseURL)\n模型：\(modelName)"
-        do {
-            if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            appendLog("输入框未填新 Key，沿用 Keychain 中已有的 Key")
+        } else {
+            do {
                 try KeychainStore.shared.save(apiKey, for: aiSettings.apiKeychainKey)
+                appendLog("已把输入框中的 API Key 写入 Keychain")
+            } catch {
+                appendLog("⚠️ 写入 Keychain 失败：\(error.localizedDescription)")
             }
-            try modelContext.save()
-            let response = try await aiClient.testConnection(settings: aiSettings)
-            testResult = "✅ 连接成功\n\(diagnostics)\n返回：\(response)"
-        } catch {
-            testResult = "❌ 测试失败\n\(diagnostics)\n错误：\(error.localizedDescription)"
         }
-        showingTestResult = true
+
+        do {
+            try modelContext.save()
+        } catch {
+            appendLog("⚠️ 保存设置失败：\(error.localizedDescription)")
+        }
+
+        await aiClient.diagnose(settings: aiSettings) { line in
+            appendLog(line)
+        }
+    }
+
+    private func appendLog(_ line: String) {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        debugLog += "[\(formatter.string(from: .now))] \(line)\n"
     }
 
     @MainActor
