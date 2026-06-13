@@ -44,7 +44,7 @@ final class HealthKitService: ObservableObject {
             return
         }
 
-        try await withCheckedThrowingContinuation { continuation in
+        _ = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
             healthStore.requestAuthorization(toShare: nil, read: readTypes) { success, error in
                 if let error {
                     continuation.resume(throwing: error)
