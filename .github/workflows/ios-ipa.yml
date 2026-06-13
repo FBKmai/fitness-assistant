@@ -1,0 +1,198 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      signing_mode:
+        description: "unsigned: build IPA for re-signing; signed: sign in GitHub Actions"
+        required: true
+        default: "unsigned"
+        type: choice
+        options:
+          - unsigned
+          - signed
+      export_method:
+        description: "Only used when signing_mode is signed"
+        required: true
+        default: "development"
+        type: choice
+        options:
+          - development
+          - ad-hoc
+
+jobs:
+  build:
+    name: Build IPA
+    runs-on: macos-15
+
+    env:
+      PROJECT_PATH: FitnessAssistant.xcodeproj
+      SCHEME: FitnessAssistant
+      CONFIGURATION: Release
+      APP_NAME: 健身助手
+      DEFAULT_BUNDLE_IDENTIFIER: com.local.FitnessAssistant
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Build unsigned device app
+        if: ${{ inputs.signing_mode == 'unsigned' }}
+        run: |
+          set -euo pipefail
+          DERIVED_DATA="$RUNNER_TEMP/DerivedData"
+          xcodebuild \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIGURATION" \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
+
+          APP_PATH="$(find "$DERIVED_DATA/Build/Products/${CONFIGURATION}-iphoneos" -maxdepth 1 -name "*.app" -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "Could not find built .app"
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/unsigned-ipa/Payload"
+          cp -R "$APP_PATH" "$RUNNER_TEMP/unsigned-ipa/Payload/"
+          cd "$RUNNER_TEMP/unsigned-ipa"
+          ditto -c -k --sequesterRsrc Payload "$RUNNER_TEMP/FitnessAssistant-unsigned.ipa"
+          mkdir -p artifacts
+          cp "$RUNNER_TEMP/FitnessAssistant-unsigned.ipa" artifacts/
+
+      - name: Install Apple signing certificate and provisioning profile
+        if: ${{ inputs.signing_mode == 'signed' }}
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          CERTIFICATE_PATH="$RUNNER_TEMP/build_certificate.p12"
+          PP_PATH="$RUNNER_TEMP/build_profile.mobileprovision"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          if [ -z "${BUILD_CERTIFICATE_BASE64:-}" ] || [ -z "${BUILD_PROVISION_PROFILE_BASE64:-}" ]; then
+            echo "Missing signing secrets. Add BUILD_CERTIFICATE_BASE64 and BUILD_PROVISION_PROFILE_BASE64."
+            exit 1
+          fi
+
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERTIFICATE_PATH"
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o "$PP_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security cms -D -i "$PP_PATH" > "$RUNNER_TEMP/profile.plist"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" "$RUNNER_TEMP/profile.plist")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print Name" "$RUNNER_TEMP/profile.plist")
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PP_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+
+      - name: Resolve signing settings
+        if: ${{ inputs.signing_mode == 'signed' }}
+        env:
+          DEVELOPMENT_TEAM_SECRET: ${{ secrets.DEVELOPMENT_TEAM }}
+          BUNDLE_IDENTIFIER_VAR: ${{ vars.BUNDLE_IDENTIFIER }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEVELOPMENT_TEAM_SECRET:-}" ]; then
+            echo "Missing DEVELOPMENT_TEAM secret."
+            exit 1
+          fi
+
+          BUNDLE_IDENTIFIER="${BUNDLE_IDENTIFIER_VAR:-$DEFAULT_BUNDLE_IDENTIFIER}"
+          echo "DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM_SECRET" >> "$GITHUB_ENV"
+          echo "BUNDLE_IDENTIFIER=$BUNDLE_IDENTIFIER" >> "$GITHUB_ENV"
+
+      - name: Archive signed app
+        if: ${{ inputs.signing_mode == 'signed' }}
+        run: |
+          set -euo pipefail
+          ARCHIVE_PATH="$RUNNER_TEMP/FitnessAssistant.xcarchive"
+          xcodebuild \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIGURATION" \
+            -destination "generic/platform=iOS" \
+            -archivePath "$ARCHIVE_PATH" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+            PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_IDENTIFIER" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            clean archive
+
+      - name: Export signed IPA
+        if: ${{ inputs.signing_mode == 'signed' }}
+        run: |
+          set -euo pipefail
+          EXPORT_OPTIONS="$RUNNER_TEMP/ExportOptions.plist"
+          EXPORT_PATH="$RUNNER_TEMP/export"
+
+          cat > "$EXPORT_OPTIONS" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>${{ inputs.export_method }}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>$DEVELOPMENT_TEAM</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_IDENTIFIER</key>
+              <string>$PROFILE_NAME</string>
+            </dict>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$RUNNER_TEMP/FitnessAssistant.xcarchive" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist "$EXPORT_OPTIONS"
+
+          mkdir -p artifacts
+          IPA_PATH="$(find "$EXPORT_PATH" -maxdepth 1 -name "*.ipa" -print -quit)"
+          if [ -z "$IPA_PATH" ]; then
+            echo "Could not find exported .ipa"
+            exit 1
+          fi
+          cp "$IPA_PATH" "artifacts/FitnessAssistant-signed.ipa"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: fitness-assistant-ipa-${{ inputs.signing_mode }}
+          path: artifacts/*.ipa
+          if-no-files-found: error
+
+      - name: Clean signing keychain
+        if: ${{ always() && inputs.signing_mode == 'signed' }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true

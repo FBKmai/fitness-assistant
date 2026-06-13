@@ -1,0 +1,629 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		FA2000000000000000000001 /* FitnessAssistantApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000001 /* FitnessAssistantApp.swift */; };
+		FA2000000000000000000002 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000002 /* RootView.swift */; };
+		FA2000000000000000000003 /* AppEnums.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000003 /* AppEnums.swift */; };
+		FA2000000000000000000004 /* UserProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000004 /* UserProfile.swift */; };
+		FA2000000000000000000005 /* MealModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000005 /* MealModels.swift */; };
+		FA2000000000000000000006 /* ExerciseEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000006 /* ExerciseEntry.swift */; };
+		FA2000000000000000000007 /* DailySummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000007 /* DailySummary.swift */; };
+		FA2000000000000000000008 /* AISettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000008 /* AISettings.swift */; };
+		FA2000000000000000000009 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000009 /* KeychainStore.swift */; };
+		FA200000000000000000000A /* AIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000000A /* AIClient.swift */; };
+		FA200000000000000000000B /* HealthKitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000000B /* HealthKitService.swift */; };
+		FA200000000000000000000C /* CalorieCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000000C /* CalorieCalculator.swift */; };
+		FA200000000000000000000D /* NotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000000D /* NotificationScheduler.swift */; };
+		FA200000000000000000000E /* ImageStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000000E /* ImageStorage.swift */; };
+		FA200000000000000000000F /* CSVExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000000F /* CSVExporter.swift */; };
+		FA2000000000000000000010 /* DateHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000010 /* DateHelpers.swift */; };
+		FA2000000000000000000011 /* AIResponseParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000011 /* AIResponseParser.swift */; };
+		FA2000000000000000000012 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000012 /* OnboardingView.swift */; };
+		FA2000000000000000000013 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000013 /* TodayView.swift */; };
+		FA2000000000000000000014 /* MealsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000014 /* MealsView.swift */; };
+		FA2000000000000000000015 /* ExerciseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000015 /* ExerciseView.swift */; };
+		FA2000000000000000000016 /* SummariesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000016 /* SummariesView.swift */; };
+		FA2000000000000000000017 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000017 /* SettingsView.swift */; };
+		FA2000000000000000000018 /* SystemPickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000018 /* SystemPickers.swift */; };
+		FA2000000000000000000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000001C /* Assets.xcassets */; };
+		FA200000000000000000001A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000001B /* PrivacyInfo.xcprivacy */; };
+		FA200000000000000000001B /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA100000000000000000001D /* HealthKit.framework */; };
+		FA200000000000000000001C /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA100000000000000000001E /* Security.framework */; };
+		FA200000000000000000001D /* CalorieCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000021 /* CalorieCalculatorTests.swift */; };
+		FA200000000000000000001E /* CSVExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000022 /* CSVExporterTests.swift */; };
+		FA200000000000000000001F /* AIResponseParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000023 /* AIResponseParserTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		FA3000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FA0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FA0000000000000000000005;
+			remoteInfo = FitnessAssistant;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		FA1000000000000000000001 /* FitnessAssistantApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FitnessAssistantApp.swift; sourceTree = "<group>"; };
+		FA1000000000000000000002 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		FA1000000000000000000003 /* AppEnums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnums.swift; sourceTree = "<group>"; };
+		FA1000000000000000000004 /* UserProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfile.swift; sourceTree = "<group>"; };
+		FA1000000000000000000005 /* MealModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MealModels.swift; sourceTree = "<group>"; };
+		FA1000000000000000000006 /* ExerciseEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseEntry.swift; sourceTree = "<group>"; };
+		FA1000000000000000000007 /* DailySummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailySummary.swift; sourceTree = "<group>"; };
+		FA1000000000000000000008 /* AISettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettings.swift; sourceTree = "<group>"; };
+		FA1000000000000000000009 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		FA100000000000000000000A /* AIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIClient.swift; sourceTree = "<group>"; };
+		FA100000000000000000000B /* HealthKitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitService.swift; sourceTree = "<group>"; };
+		FA100000000000000000000C /* CalorieCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalorieCalculator.swift; sourceTree = "<group>"; };
+		FA100000000000000000000D /* NotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationScheduler.swift; sourceTree = "<group>"; };
+		FA100000000000000000000E /* ImageStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStorage.swift; sourceTree = "<group>"; };
+		FA100000000000000000000F /* CSVExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVExporter.swift; sourceTree = "<group>"; };
+		FA1000000000000000000010 /* DateHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateHelpers.swift; sourceTree = "<group>"; };
+		FA1000000000000000000011 /* AIResponseParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIResponseParser.swift; sourceTree = "<group>"; };
+		FA1000000000000000000012 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		FA1000000000000000000013 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
+		FA1000000000000000000014 /* MealsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MealsView.swift; sourceTree = "<group>"; };
+		FA1000000000000000000015 /* ExerciseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseView.swift; sourceTree = "<group>"; };
+		FA1000000000000000000016 /* SummariesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummariesView.swift; sourceTree = "<group>"; };
+		FA1000000000000000000017 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		FA1000000000000000000018 /* SystemPickers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPickers.swift; sourceTree = "<group>"; };
+		FA1000000000000000000019 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		FA100000000000000000001A /* FitnessAssistant.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FitnessAssistant.entitlements; sourceTree = "<group>"; };
+		FA100000000000000000001B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		FA100000000000000000001C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		FA100000000000000000001D /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
+		FA100000000000000000001E /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		FA100000000000000000001F /* 健身助手.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "健身助手.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		FA1000000000000000000020 /* FitnessAssistantTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FitnessAssistantTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		FA1000000000000000000021 /* CalorieCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalorieCalculatorTests.swift; sourceTree = "<group>"; };
+		FA1000000000000000000022 /* CSVExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVExporterTests.swift; sourceTree = "<group>"; };
+		FA1000000000000000000023 /* AIResponseParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIResponseParserTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		FA4000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FA200000000000000000001B /* HealthKit.framework in Frameworks */,
+				FA200000000000000000001C /* Security.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FA4000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		FA0000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				FA5000000000000000000001 /* FitnessAssistant */,
+				FA5000000000000000000006 /* FitnessAssistantTests */,
+				FA0000000000000000000004 /* Frameworks */,
+				FA0000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		FA0000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				FA100000000000000000001F /* 健身助手.app */,
+				FA1000000000000000000020 /* FitnessAssistantTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		FA0000000000000000000004 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				FA100000000000000000001D /* HealthKit.framework */,
+				FA100000000000000000001E /* Security.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		FA5000000000000000000001 /* FitnessAssistant */ = {
+			isa = PBXGroup;
+			children = (
+				FA5000000000000000000002 /* App */,
+				FA5000000000000000000003 /* Models */,
+				FA5000000000000000000004 /* Services */,
+				FA5000000000000000000005 /* Views */,
+				FA5000000000000000000007 /* Resources */,
+			);
+			path = FitnessAssistant;
+			sourceTree = "<group>";
+		};
+		FA5000000000000000000002 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				FA1000000000000000000001 /* FitnessAssistantApp.swift */,
+				FA1000000000000000000002 /* RootView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		FA5000000000000000000003 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				FA1000000000000000000003 /* AppEnums.swift */,
+				FA1000000000000000000004 /* UserProfile.swift */,
+				FA1000000000000000000005 /* MealModels.swift */,
+				FA1000000000000000000006 /* ExerciseEntry.swift */,
+				FA1000000000000000000007 /* DailySummary.swift */,
+				FA1000000000000000000008 /* AISettings.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		FA5000000000000000000004 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				FA1000000000000000000009 /* KeychainStore.swift */,
+				FA100000000000000000000A /* AIClient.swift */,
+				FA1000000000000000000011 /* AIResponseParser.swift */,
+				FA100000000000000000000B /* HealthKitService.swift */,
+				FA100000000000000000000C /* CalorieCalculator.swift */,
+				FA100000000000000000000D /* NotificationScheduler.swift */,
+				FA100000000000000000000E /* ImageStorage.swift */,
+				FA100000000000000000000F /* CSVExporter.swift */,
+				FA1000000000000000000010 /* DateHelpers.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		FA5000000000000000000005 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				FA1000000000000000000012 /* OnboardingView.swift */,
+				FA1000000000000000000013 /* TodayView.swift */,
+				FA1000000000000000000014 /* MealsView.swift */,
+				FA1000000000000000000015 /* ExerciseView.swift */,
+				FA1000000000000000000016 /* SummariesView.swift */,
+				FA1000000000000000000017 /* SettingsView.swift */,
+				FA1000000000000000000018 /* SystemPickers.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		FA5000000000000000000006 /* FitnessAssistantTests */ = {
+			isa = PBXGroup;
+			children = (
+				FA1000000000000000000021 /* CalorieCalculatorTests.swift */,
+				FA1000000000000000000022 /* CSVExporterTests.swift */,
+				FA1000000000000000000023 /* AIResponseParserTests.swift */,
+			);
+			path = FitnessAssistantTests;
+			sourceTree = "<group>";
+		};
+		FA5000000000000000000007 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				FA1000000000000000000019 /* Info.plist */,
+				FA100000000000000000001A /* FitnessAssistant.entitlements */,
+				FA100000000000000000001B /* PrivacyInfo.xcprivacy */,
+				FA100000000000000000001C /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		FA0000000000000000000005 /* FitnessAssistant */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FA7000000000000000000003 /* Build configuration list for PBXNativeTarget "FitnessAssistant" */;
+			buildPhases = (
+				FA6000000000000000000001 /* Sources */,
+				FA4000000000000000000001 /* Frameworks */,
+				FA6000000000000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FitnessAssistant;
+			productName = "健身助手";
+			productReference = FA100000000000000000001F /* 健身助手.app */;
+			productType = "com.apple.product-type.application";
+		};
+		FA0000000000000000000006 /* FitnessAssistantTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FA7000000000000000000004 /* Build configuration list for PBXNativeTarget "FitnessAssistantTests" */;
+			buildPhases = (
+				FA6000000000000000000003 /* Sources */,
+				FA4000000000000000000002 /* Frameworks */,
+				FA6000000000000000000004 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FA3000000000000000000002 /* PBXTargetDependency */,
+			);
+			name = FitnessAssistantTests;
+			productName = FitnessAssistantTests;
+			productReference = FA1000000000000000000020 /* FitnessAssistantTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		FA0000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					FA0000000000000000000005 = {
+						CreatedOnToolsVersion = 15.0;
+						SystemCapabilities = {
+							com.apple.HealthKit = {
+								enabled = 1;
+							};
+						};
+					};
+					FA0000000000000000000006 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = FA0000000000000000000005;
+					};
+				};
+			};
+			buildConfigurationList = FA7000000000000000000001 /* Build configuration list for PBXProject "FitnessAssistant" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = "zh-Hans";
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				"zh-Hans",
+				en,
+				Base,
+			);
+			mainGroup = FA0000000000000000000002;
+			productRefGroup = FA0000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				FA0000000000000000000005 /* FitnessAssistant */,
+				FA0000000000000000000006 /* FitnessAssistantTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		FA6000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FA2000000000000000000019 /* Assets.xcassets in Resources */,
+				FA200000000000000000001A /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FA6000000000000000000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		FA6000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FA2000000000000000000001 /* FitnessAssistantApp.swift in Sources */,
+				FA2000000000000000000002 /* RootView.swift in Sources */,
+				FA2000000000000000000003 /* AppEnums.swift in Sources */,
+				FA2000000000000000000004 /* UserProfile.swift in Sources */,
+				FA2000000000000000000005 /* MealModels.swift in Sources */,
+				FA2000000000000000000006 /* ExerciseEntry.swift in Sources */,
+				FA2000000000000000000007 /* DailySummary.swift in Sources */,
+				FA2000000000000000000008 /* AISettings.swift in Sources */,
+				FA2000000000000000000009 /* KeychainStore.swift in Sources */,
+				FA200000000000000000000A /* AIClient.swift in Sources */,
+				FA2000000000000000000011 /* AIResponseParser.swift in Sources */,
+				FA200000000000000000000B /* HealthKitService.swift in Sources */,
+				FA200000000000000000000C /* CalorieCalculator.swift in Sources */,
+				FA200000000000000000000D /* NotificationScheduler.swift in Sources */,
+				FA200000000000000000000E /* ImageStorage.swift in Sources */,
+				FA200000000000000000000F /* CSVExporter.swift in Sources */,
+				FA2000000000000000000010 /* DateHelpers.swift in Sources */,
+				FA2000000000000000000012 /* OnboardingView.swift in Sources */,
+				FA2000000000000000000013 /* TodayView.swift in Sources */,
+				FA2000000000000000000014 /* MealsView.swift in Sources */,
+				FA2000000000000000000015 /* ExerciseView.swift in Sources */,
+				FA2000000000000000000016 /* SummariesView.swift in Sources */,
+				FA2000000000000000000017 /* SettingsView.swift in Sources */,
+				FA2000000000000000000018 /* SystemPickers.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FA6000000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FA200000000000000000001D /* CalorieCalculatorTests.swift in Sources */,
+				FA200000000000000000001E /* CSVExporterTests.swift in Sources */,
+				FA200000000000000000001F /* AIResponseParserTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FA3000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FA0000000000000000000005 /* FitnessAssistant */;
+			targetProxy = FA3000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		FA8000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		FA8000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		FA8000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FitnessAssistant/Resources/FitnessAssistant.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FitnessAssistant/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.FitnessAssistant;
+				PRODUCT_MODULE_NAME = FitnessAssistant;
+				PRODUCT_NAME = "健身助手";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		FA8000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FitnessAssistant/Resources/FitnessAssistant.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FitnessAssistant/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.FitnessAssistant;
+				PRODUCT_MODULE_NAME = FitnessAssistant;
+				PRODUCT_NAME = "健身助手";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		FA8000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.FitnessAssistantTests;
+				PRODUCT_MODULE_NAME = FitnessAssistantTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/健身助手.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/健身助手";
+			};
+			name = Debug;
+		};
+		FA8000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.FitnessAssistantTests;
+				PRODUCT_MODULE_NAME = FitnessAssistantTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/健身助手.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/健身助手";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		FA7000000000000000000001 /* Build configuration list for PBXProject "FitnessAssistant" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FA8000000000000000000001 /* Debug */,
+				FA8000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FA7000000000000000000003 /* Build configuration list for PBXNativeTarget "FitnessAssistant" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FA8000000000000000000003 /* Debug */,
+				FA8000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FA7000000000000000000004 /* Build configuration list for PBXNativeTarget "FitnessAssistantTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FA8000000000000000000005 /* Debug */,
+				FA8000000000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = FA0000000000000000000001 /* Project object */;
+}

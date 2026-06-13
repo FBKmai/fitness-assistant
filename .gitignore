@@ -1,0 +1,19 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+
+# Archives and packages
+*.ipa
+*.xcarchive
+*.dSYM.zip
+
+# Signing secrets
+*.p12
+*.mobileprovision
+*.cer
+*.base64
+
+# macOS
+.DS_Store
