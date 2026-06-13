@@ -71,7 +71,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/unsigned-ipa/Payload"
           cp -R "$APP_PATH" "$RUNNER_TEMP/unsigned-ipa/Payload/"
           cd "$RUNNER_TEMP/unsigned-ipa"
-          ditto -c -k --sequesterRsrc Payload "$RUNNER_TEMP/FitnessAssistant-unsigned.ipa"
+          ditto -c -k --sequesterRsrc --keepParent Payload "$RUNNER_TEMP/FitnessAssistant-unsigned.ipa"
+          unzip -l "$RUNNER_TEMP/FitnessAssistant-unsigned.ipa" | tee "$RUNNER_TEMP/ipa-contents-unsigned.log"
           mkdir -p "$GITHUB_WORKSPACE/artifacts"
           cp "$RUNNER_TEMP/FitnessAssistant-unsigned.ipa" "$GITHUB_WORKSPACE/artifacts/"
 
