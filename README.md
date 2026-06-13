@@ -9,7 +9,8 @@
 - 饮食支持文字、拍照、相册图片，AI 估算后可编辑确认再入库。
 - 每晚本地通知提醒；打开 App 后可同步健康数据并生成当日总结。
 - CSV 导出 `meals.csv`、`exercise.csv`、`daily_summaries.csv`，使用 UTF-8 BOM 方便 Excel/WPS 打开中文。
-- API Key 通过 Keychain 存储，设置页支持 OpenAI 兼容 Base URL 和模型名。
+- API Key 通过 Keychain 存储，默认接入 DeepSeek（`https://api.deepseek.com`，模型 `deepseek-v4-flash`），设置页也支持任意 OpenAI 兼容 Base URL 和模型名。
+- DeepSeek 官方接口目前仅支持文字输入；拍照或多图识别需把设置页的「视觉模型」指向支持图片的 OpenAI 兼容服务。
 
 ## 打开方式
 
@@ -17,7 +18,7 @@
 2. 在 Signing & Capabilities 中选择你的个人 Apple Developer Team。
 3. 确认 HealthKit capability 已启用。
 4. 连接 iPhone，选择真机运行。
-5. 通过设置页填写 OpenAI 兼容 API Key、Base URL 和模型名。
+5. 通过设置页填写 API Key、Base URL 和模型名（默认 DeepSeek），可用「测试 AI 模型」按钮验证连通性。
 
 本仓库当前是在 Windows 工作区生成的工程文件，无法在这里执行 `xcodebuild`。实际编译、签名、安装需要在 macOS/Xcode 环境中完成。
 

@@ -80,7 +80,8 @@ final class AIClient: ObservableObject {
                 ChatMessage(role: "user", content: userContent)
             ],
             temperature: 0.2,
-            jsonMode: true
+            jsonMode: true,
+            maxTokens: 4000
         )
 
         return try AIResponseParser.decodeJSONObject(MealEstimate.self, from: content)
@@ -113,7 +114,8 @@ final class AIClient: ObservableObject {
                 ChatMessage(role: "user", content: .text(snapshotJSON))
             ],
             temperature: 0.4,
-            jsonMode: true
+            jsonMode: true,
+            maxTokens: 2000
         )
 
         return try AIResponseParser.decodeJSONObject(DailyAdvice.self, from: content)
@@ -128,7 +130,8 @@ final class AIClient: ObservableObject {
                 ChatMessage(role: "user", content: .text("Reply OK."))
             ],
             temperature: 0,
-            jsonMode: false
+            jsonMode: false,
+            maxTokens: 32
         )
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "OK" : trimmed
@@ -139,7 +142,8 @@ final class AIClient: ObservableObject {
         settings: AISettings,
         messages: [ChatMessage],
         temperature: Double,
-        jsonMode: Bool
+        jsonMode: Bool,
+        maxTokens: Int
     ) async throws -> String {
         guard let apiKey = try keychain.read(settings.apiKeychainKey), !apiKey.isEmpty else {
             throw AIClientError.missingAPIKey
@@ -154,10 +158,12 @@ final class AIClient: ObservableObject {
             messages: messages,
             temperature: temperature,
             responseFormat: jsonMode ? ChatResponseFormat(type: "json_object") : nil,
-            maxTokens: jsonMode ? 2000 : 32
+            maxTokens: maxTokens
         )
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        // 模型推理（尤其是带图片或思考模式）可能较慢，放宽到 120 秒，避免默认 60 秒过早超时。
+        request.timeoutInterval = 120
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(requestBody)
@@ -216,6 +222,8 @@ final class AIClient: ObservableObject {
                 return "无法找到 AI 服务域名。请检查 Base URL，例如 DeepSeek 使用 https://api.deepseek.com。"
             case NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost, NSURLErrorNotConnectedToInternet:
                 return "无法连接 AI 服务。请检查网络、代理或稍后重试。"
+            case NSURLErrorTimedOut:
+                return "AI 请求超时。DeepSeek 推理较慢或网络不稳定时可稍后重试，也可检查代理设置。"
             default:
                 break
             }

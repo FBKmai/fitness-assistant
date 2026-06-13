@@ -52,7 +52,7 @@ struct SettingsView: View {
                     DatePicker("晚间提醒", selection: $reminderTime, displayedComponents: .hourAndMinute)
                 }
 
-                Section("AI 接口") {
+                Section {
                     TextField("Base URL", text: $baseURL)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
@@ -68,6 +68,10 @@ struct SettingsView: View {
                         Label(isTestingAI ? "测试中" : "测试 AI 模型", systemImage: "bolt.horizontal.circle")
                     }
                     .disabled(isTestingAI)
+                } header: {
+                    Text("AI 接口")
+                } footer: {
+                    Text("DeepSeek 默认 Base URL 为 https://api.deepseek.com，文字模型 deepseek-v4-flash 用于文字估算和每日建议。DeepSeek 官方接口目前仅支持文字，拍照或多图识别需要把视觉模型一项指向支持图片的 OpenAI 兼容服务，否则带图估算会报错。")
                 }
 
                 Section("权限") {

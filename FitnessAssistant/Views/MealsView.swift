@@ -58,6 +58,8 @@ struct MealEditorView: View {
 
     @Query private var settings: [AISettings]
 
+    private let maxImageCount = 8
+
     @State private var textDescription = ""
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var imageDataList: [Data] = []
@@ -81,14 +83,20 @@ struct MealEditorView: View {
                 Section("记录") {
                     TextEditor(text: $textDescription)
                         .frame(minHeight: 96)
-                    PhotosPicker(selection: $selectedPhotos, maxSelectionCount: 8, matching: .images) {
+                    PhotosPicker(
+                        selection: $selectedPhotos,
+                        maxSelectionCount: max(1, maxImageCount - imageDataList.count),
+                        matching: .images
+                    ) {
                         Label("从相册选择多张", systemImage: "photo.on.rectangle")
                     }
+                    .disabled(imageDataList.count >= maxImageCount)
                     Button {
                         showingCamera = true
                     } label: {
                         Label("拍照追加", systemImage: "camera")
                     }
+                    .disabled(imageDataList.count >= maxImageCount)
 
                     if !imageDataList.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -103,9 +111,6 @@ struct MealEditorView: View {
                                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                                             Button {
                                                 imageDataList.remove(at: index)
-                                                if selectedPhotos.indices.contains(index) {
-                                                    selectedPhotos.remove(at: index)
-                                                }
                                             } label: {
                                                 Image(systemName: "xmark.circle.fill")
                                                     .symbolRenderingMode(.palette)
@@ -119,7 +124,7 @@ struct MealEditorView: View {
                             }
                             .padding(.vertical, 2)
                         }
-                        Text("已选择 \(imageDataList.count) 张图片")
+                        Text("已选择 \(imageDataList.count) / \(maxImageCount) 张图片")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -181,33 +186,36 @@ struct MealEditorView: View {
                 }
             }
             .onChange(of: selectedPhotos) { _, newValue in
-                Task { await loadPhotos(newValue) }
+                Task { await appendPhotos(newValue) }
             }
             .sheet(isPresented: $showingCamera) {
                 CameraPicker { image in
-                    if let data = ImageStorage.compressedJPEGData(from: image) {
-                        imageDataList.append(data)
-                    }
+                    guard imageDataList.count < maxImageCount,
+                          let data = ImageStorage.compressedJPEGData(from: image) else { return }
+                    imageDataList.append(data)
                 }
             }
         }
     }
 
+    /// 相册多选与拍照共用 imageDataList 作为唯一数据源：新选中的照片追加到列表，
+    /// 随后清空 PhotosPicker 选择，避免相册选择覆盖拍照结果或删除时下标错位。
     @MainActor
-    private func loadPhotos(_ items: [PhotosPickerItem]) async {
-        do {
-            var loadedImages: [Data] = []
-            for item in items {
+    private func appendPhotos(_ items: [PhotosPickerItem]) async {
+        guard !items.isEmpty else { return }
+        for item in items {
+            guard imageDataList.count < maxImageCount else { break }
+            do {
                 if let data = try await item.loadTransferable(type: Data.self),
                    let image = UIImage(data: data),
                    let compressed = ImageStorage.compressedJPEGData(from: image) {
-                    loadedImages.append(compressed)
+                    imageDataList.append(compressed)
                 }
+            } catch {
+                errorMessage = error.localizedDescription
             }
-            imageDataList = loadedImages
-        } catch {
-            errorMessage = error.localizedDescription
         }
+        selectedPhotos = []
     }
 
     @MainActor
