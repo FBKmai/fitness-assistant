@@ -153,12 +153,17 @@ final class AIClient: ObservableObject {
             throw AIClientError.invalidBaseURL
         }
 
+        // DeepSeek 的 deepseek-v4-flash 等模型默认开启 thinking(思考)模式：会先生成大段
+        // reasoning_content 再产出正文，导致响应缓慢容易超时，且在 max_tokens 较小时正文为空。
+        // 仅当 Base URL 指向 DeepSeek 时显式关闭，避免向其它 OpenAI 兼容服务发送未知字段。
+        let disableThinking = settings.baseURL.localizedCaseInsensitiveContains("deepseek")
         let requestBody = ChatRequest(
             model: model,
             messages: messages,
             temperature: temperature,
             responseFormat: jsonMode ? ChatResponseFormat(type: "json_object") : nil,
-            maxTokens: maxTokens
+            maxTokens: maxTokens,
+            thinking: disableThinking ? ThinkingConfig(type: "disabled") : nil
         )
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -186,10 +191,15 @@ final class AIClient: ObservableObject {
         }
 
         let decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
-        guard let content = decoded.choices.first?.message.content, !content.isEmpty else {
-            throw AIClientError.emptyResponse
+        let message = decoded.choices.first?.message
+        if let content = message?.content, !content.isEmpty {
+            return content
         }
-        return content
+        // 正文为空但有思考内容：说明模型仍处于思考模式且回复被 max_tokens 截断在推理阶段。
+        if let reasoning = message?.reasoningContent, !reasoning.isEmpty {
+            throw AIClientError.transport("AI 只返回了思考内容、没有正式回答，通常是模型处于思考(thinking)模式且回复被 max_tokens 截断。请确认 Base URL 指向 DeepSeek（会自动关闭思考模式）后重试。")
+        }
+        throw AIClientError.emptyResponse
     }
 
     private func chatCompletionsURL(from baseURL: String) -> URL? {
@@ -238,6 +248,7 @@ private struct ChatRequest: Encodable {
     var temperature: Double
     var responseFormat: ChatResponseFormat?
     var maxTokens: Int?
+    var thinking: ThinkingConfig?
 
     enum CodingKeys: String, CodingKey {
         case model
@@ -245,10 +256,16 @@ private struct ChatRequest: Encodable {
         case temperature
         case responseFormat = "response_format"
         case maxTokens = "max_tokens"
+        case thinking
     }
 }
 
 private struct ChatResponseFormat: Encodable {
+    var type: String
+}
+
+// DeepSeek 思考模式开关：{"type": "disabled"} 关闭思考，{"type": "enabled"} 开启。
+private struct ThinkingConfig: Encodable {
     var type: String
 }
 
@@ -307,6 +324,12 @@ private struct ChatResponse: Decodable {
     struct Choice: Decodable {
         struct Message: Decodable {
             var content: String?
+            var reasoningContent: String?
+
+            enum CodingKeys: String, CodingKey {
+                case content
+                case reasoningContent = "reasoning_content"
+            }
         }
 
         var message: Message
