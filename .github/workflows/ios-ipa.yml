@@ -72,8 +72,8 @@ jobs:
           cp -R "$APP_PATH" "$RUNNER_TEMP/unsigned-ipa/Payload/"
           cd "$RUNNER_TEMP/unsigned-ipa"
           ditto -c -k --sequesterRsrc Payload "$RUNNER_TEMP/FitnessAssistant-unsigned.ipa"
-          mkdir -p artifacts
-          cp "$RUNNER_TEMP/FitnessAssistant-unsigned.ipa" artifacts/
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          cp "$RUNNER_TEMP/FitnessAssistant-unsigned.ipa" "$GITHUB_WORKSPACE/artifacts/"
 
       - name: Install Apple signing certificate and provisioning profile
         if: ${{ env.SIGNING_MODE == 'signed' }}
@@ -185,13 +185,13 @@ jobs:
             -exportPath "$EXPORT_PATH" \
             -exportOptionsPlist "$EXPORT_OPTIONS" 2>&1 | tee "$RUNNER_TEMP/xcodebuild-signed-export.log"
 
-          mkdir -p artifacts
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
           IPA_PATH="$(find "$EXPORT_PATH" -maxdepth 1 -name "*.ipa" -print -quit)"
           if [ -z "$IPA_PATH" ]; then
             echo "Could not find exported .ipa"
             exit 1
           fi
-          cp "$IPA_PATH" "artifacts/FitnessAssistant-signed.ipa"
+          cp "$IPA_PATH" "$GITHUB_WORKSPACE/artifacts/FitnessAssistant-signed.ipa"
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
