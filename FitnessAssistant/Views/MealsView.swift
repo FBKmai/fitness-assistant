@@ -140,6 +140,7 @@ struct MealEditorView: View {
     @EnvironmentObject private var aiClient: AIClient
 
     @Query private var settings: [AISettings]
+    @Query private var profiles: [UserProfile]
 
     private let maxImageCount = 8
     /// 非空表示编辑既有记录，nil 表示新增。
@@ -369,11 +370,15 @@ struct MealEditorView: View {
         errorMessage = nil
         defer { isEstimating = false }
 
+        let bodyContext = profiles.first.map {
+            "身高\(Int($0.heightCm))cm、体重\(String(format: "%.1f", $0.currentWeightKg))kg、\($0.gender.title)、\($0.age)岁"
+        }
         do {
             let estimate = try await aiClient.estimateMeal(
                 text: textDescription,
                 imageDataList: imageDataList,
-                settings: aiSettings
+                settings: aiSettings,
+                bodyContext: bodyContext
             )
             totalCalories = String(format: "%.0f", estimate.totalCalories)
             proteinGrams = String(format: "%.1f", estimate.proteinGrams)

@@ -215,22 +215,49 @@ struct TodayView: View {
         )
 
         let mealTexts = confirmedMeals.map { meal in
-            "\(DateFormatter.shortTime.string(from: meal.date)) \(meal.textDescription) \(meal.totalCalories.kcalText)"
+            "\(DateFormatter.shortTime.string(from: meal.date)) \(meal.textDescription) \(meal.totalCalories.kcalText) 蛋白\(Int(meal.proteinGrams))g 碳水\(Int(meal.carbsGrams))g 脂肪\(Int(meal.fatGrams))g"
         }
         let workoutTexts = todayExercises.map { exercise in
             "\(exercise.source.title) \(exercise.workoutType) \(exercise.activeCalories.kcalText)"
         }
+        let totalProtein = confirmedMeals.reduce(0) { $0 + $1.proteinGrams }
+        let totalCarbs = confirmedMeals.reduce(0) { $0 + $1.carbsGrams }
+        let totalFat = confirmedMeals.reduce(0) { $0 + $1.fatGrams }
+
+        // 近 7 天趋势（不含今天），summaries 已按日期倒序排列。
+        let todayStart = Calendar.current.startOfDay(for: .now)
+        let recentDays = summaries
+            .filter { $0.date < todayStart }
+            .prefix(7)
+            .map { day in
+                DayTrend(
+                    date: day.date,
+                    intakeCalories: day.intakeCalories,
+                    calorieDeficit: day.calorieDeficit,
+                    weightKg: day.weightKg > 0 ? day.weightKg : nil
+                )
+            }
+
         let snapshot = DailySnapshot(
             date: .now,
             goal: profile.goal.title,
             targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
+            heightCm: profile.heightCm,
+            weightKg: profile.currentWeightKg,
+            gender: profile.gender.title,
+            age: profile.age,
+            bmr: CalorieCalculator.bmr(profile: profile),
             intakeCalories: computation.intakeCalories,
             activeCalories: computation.activeCalories,
             restingCalories: computation.restingCalories,
             totalBurnCalories: computation.totalBurnCalories,
             calorieDeficit: computation.calorieDeficit,
+            proteinGrams: totalProtein,
+            carbsGrams: totalCarbs,
+            fatGrams: totalFat,
             meals: mealTexts,
-            workouts: workoutTexts
+            workouts: workoutTexts,
+            recentDays: Array(recentDays)
         )
 
         let adviceText: String
@@ -253,6 +280,7 @@ struct TodayView: View {
             restingCalories: computation.restingCalories,
             totalBurnCalories: computation.totalBurnCalories,
             calorieDeficit: computation.calorieDeficit,
+            weightKg: profile.currentWeightKg,
             adviceText: adviceText,
             snapshot: snapshot
         )
@@ -265,6 +293,7 @@ struct TodayView: View {
             existing.restingCalories = newSummary.restingCalories
             existing.totalBurnCalories = newSummary.totalBurnCalories
             existing.calorieDeficit = newSummary.calorieDeficit
+            existing.weightKg = newSummary.weightKg
             existing.adviceText = newSummary.adviceText
             existing.snapshot = newSummary.snapshot
             existing.generatedAt = .now

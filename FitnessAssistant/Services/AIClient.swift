@@ -36,11 +36,11 @@ final class AIClient: ObservableObject {
         self.session = session
     }
 
-    func estimateMeal(text: String, imageData: Data?, settings: AISettings) async throws -> MealEstimate {
-        try await estimateMeal(text: text, imageDataList: imageData.map { [$0] } ?? [], settings: settings)
+    func estimateMeal(text: String, imageData: Data?, settings: AISettings, bodyContext: String? = nil) async throws -> MealEstimate {
+        try await estimateMeal(text: text, imageDataList: imageData.map { [$0] } ?? [], settings: settings, bodyContext: bodyContext)
     }
 
-    func estimateMeal(text: String, imageDataList: [Data], settings: AISettings) async throws -> MealEstimate {
+    func estimateMeal(text: String, imageDataList: [Data], settings: AISettings, bodyContext: String? = nil) async throws -> MealEstimate {
         let systemPrompt = """
         你是一个营养记录助手。根据用户的文字或餐食照片估算热量和三大营养素。
         只返回 JSON，不要使用 markdown。所有数值使用 kcal 或克。
@@ -56,9 +56,11 @@ final class AIClient: ObservableObject {
         }
         """
 
-        let userText = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let baseText = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "请根据图片估算这餐的热量。"
             : text
+        // 附上身体资料，辅助模型判断份量（作用有限，仅供参考）。
+        let userText = bodyContext.map { "\(baseText)\n\n（用户身体资料，仅供份量判断参考：\($0)）" } ?? baseText
 
         let userContent: ChatContent
         if imageDataList.isEmpty {
@@ -96,8 +98,13 @@ final class AIClient: ObservableObject {
         let snapshotJSON = String(data: snapshotData, encoding: .utf8) ?? "{}"
 
         let systemPrompt = """
-        你是一个中文健身饮食监督助手。根据当天摄入、消耗、热量差、饮食和运动记录，为用户生成第二天建议。
-        目标是减脂，建议要现实、可执行，不提供医疗诊断。
+        你是一个中文健身饮食监督助手。下面的 JSON 包含用户的身体数据（身高、体重、性别、年龄、基础代谢 bmr）、
+        当天摄入/消耗/热量差、三大营养素合计、每餐与运动记录，以及近 7 天趋势 recentDays（每天的热量缺口和体重）。
+        请综合这些数据为用户生成第二天建议：
+        1. 结合身高体重年龄性别与 bmr 判断当天摄入是否过低或过高；
+        2. 结合三大营养素点评蛋白质、碳水、脂肪是否合理（减脂期重点关注蛋白质是否充足）；
+        3. 结合 recentDays 趋势说明最近进展（热量缺口是否稳定、体重变化方向）；若数据不足则说明无法判断趋势。
+        目标是减脂，建议要现实、可执行、个性化，不提供医疗诊断。
         只返回 JSON，不要使用 markdown。
         JSON 格式：
         {

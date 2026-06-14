@@ -1,17 +1,38 @@
 import Foundation
 import SwiftData
 
+/// 近 7 天趋势中的单日数据点。
+struct DayTrend: Codable {
+    var date: Date
+    var intakeCalories: Double
+    var calorieDeficit: Double
+    var weightKg: Double?
+}
+
 struct DailySnapshot: Codable {
     var date: Date
     var goal: String
     var targetDailyDeficitKcal: Double
+    // 身体数据
+    var heightCm: Double
+    var weightKg: Double
+    var gender: String
+    var age: Int
+    var bmr: Double
+    // 当日热量
     var intakeCalories: Double
     var activeCalories: Double
     var restingCalories: Double
     var totalBurnCalories: Double
     var calorieDeficit: Double
+    // 当日三大营养素合计（克）
+    var proteinGrams: Double
+    var carbsGrams: Double
+    var fatGrams: Double
     var meals: [String]
     var workouts: [String]
+    // 近 7 天趋势（不含今天）
+    var recentDays: [DayTrend]
 }
 
 struct DailyAdvice: Codable {
@@ -30,6 +51,8 @@ final class DailySummary {
     var restingCalories: Double
     var totalBurnCalories: Double
     var calorieDeficit: Double
+    // 当日体重（kg），用于近 7 天体重趋势。新增属性带内联默认值便于 SwiftData 轻量迁移。
+    var weightKg: Double = 0
     var adviceText: String
     var snapshotJSON: String
     var generatedAt: Date
@@ -42,6 +65,7 @@ final class DailySummary {
         restingCalories: Double = 0,
         totalBurnCalories: Double = 0,
         calorieDeficit: Double = 0,
+        weightKg: Double = 0,
         adviceText: String = "",
         snapshot: DailySnapshot? = nil,
         generatedAt: Date = .now
@@ -53,6 +77,7 @@ final class DailySummary {
         self.restingCalories = restingCalories
         self.totalBurnCalories = totalBurnCalories
         self.calorieDeficit = calorieDeficit
+        self.weightKg = weightKg
         self.adviceText = adviceText
         self.snapshotJSON = Self.encodeSnapshot(snapshot)
         self.generatedAt = generatedAt
