@@ -164,6 +164,15 @@ struct MealEditorView: View {
     @State private var isEstimating = false
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @FocusState private var focusedField: FocusedField?
+
+    private enum FocusedField: Hashable {
+        case description
+        case totalCalories
+        case proteinGrams
+        case carbsGrams
+        case fatGrams
+    }
 
     init(meal: MealEntry? = nil) {
         self.editingMeal = meal
@@ -210,6 +219,7 @@ struct MealEditorView: View {
                     DatePicker("吃饭时间", selection: $mealDate)
                     TextEditor(text: $textDescription)
                         .frame(minHeight: 96)
+                        .focused($focusedField, equals: .description)
                         .overlay(alignment: .topLeading) {
                             if textDescription.isEmpty {
                                 Text("描述这一餐，例如「两个鸡蛋 + 一碗燕麦 + 一杯豆浆」")
@@ -283,12 +293,20 @@ struct MealEditorView: View {
 
                     TextField("总热量 kcal", text: $totalCalories)
                         .keyboardType(.decimalPad)
+                        .focused($focusedField, equals: .totalCalories)
+                        .submitLabel(.done)
                     TextField("蛋白质 g", text: $proteinGrams)
                         .keyboardType(.decimalPad)
+                        .focused($focusedField, equals: .proteinGrams)
+                        .submitLabel(.done)
                     TextField("碳水 g", text: $carbsGrams)
                         .keyboardType(.decimalPad)
+                        .focused($focusedField, equals: .carbsGrams)
+                        .submitLabel(.done)
                     TextField("脂肪 g", text: $fatGrams)
                         .keyboardType(.decimalPad)
+                        .focused($focusedField, equals: .fatGrams)
+                        .submitLabel(.done)
                     if confidence > 0 {
                         MetricProgressBar(title: "AI 置信度", current: confidence, target: 1, tint: confidenceColor)
                             .padding(.vertical, 2)
@@ -327,10 +345,14 @@ struct MealEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button("取消") {
+                        dismissKeyboard()
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
+                        dismissKeyboard()
                         Task { await save() }
                     } label: {
                         if isSaving {
@@ -341,7 +363,32 @@ struct MealEditorView: View {
                     }
                     .disabled(totalCalories.doubleValue == nil || isSaving)
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("完成") {
+                        dismissKeyboard()
+                    }
+                    .fontWeight(.semibold)
+                }
             }
+            .safeAreaInset(edge: .bottom) {
+                if focusedField != nil {
+                    HStack {
+                        Spacer()
+                        Button {
+                            dismissKeyboard()
+                        } label: {
+                            Label("收起键盘", systemImage: "keyboard.chevron.compact.down")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.bar)
+                }
+            }
+            .onSubmit { dismissKeyboard() }
             .onAppear { loadExistingPhotoIfNeeded() }
             .onChange(of: selectedPhotos) { _, newValue in
                 Task { await appendPhotos(newValue) }
@@ -354,6 +401,11 @@ struct MealEditorView: View {
                 }
             }
         }
+    }
+
+    private func dismissKeyboard() {
+        focusedField = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     /// 编辑既有记录时，把已存的首图加载进来用于预览与重存。
