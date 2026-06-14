@@ -137,6 +137,43 @@ final class AIClient: ObservableObject {
         return try AIResponseParser.decodeJSONObject(DailyAdvice.self, from: content)
     }
 
+    func generateMealAdvice(snapshot: MealAdviceSnapshot, settings: AISettings) async throws -> MealAdviceResponse {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let snapshotData = try encoder.encode(snapshot)
+        let snapshotJSON = String(data: snapshotData, encoding: .utf8) ?? "{}"
+
+        let systemPrompt = """
+        你是一个中文减脂饮食教练。用户刚保存了一条饮食记录，JSON 中包含这一顿的餐别、吃饭时间、热量和三大营养素，
+        以及今天所有已记录饮食、今日热量差、目标缺口和本地规则化 analysis。
+        请评价这一顿是否适合减脂，并给出下一顿怎么吃的建议。
+        要具体、直接、可执行；不要空泛鼓励，不提供医疗诊断，不建议极端节食。
+        只返回 JSON，不要使用 markdown。
+        JSON 格式：
+        {
+          "mealReview": "对刚保存这顿的评价",
+          "nextMealAdvice": "下一顿具体怎么吃",
+          "snackAdvice": "零嘴或加餐建议",
+          "caution": "风险、记录误差或需要补充的数据"
+        }
+        """
+
+        let content = try await complete(
+            model: settings.modelName,
+            baseURL: settings.baseURL,
+            apiKeychainKey: settings.apiKeychainKey,
+            messages: [
+                ChatMessage(role: "system", content: .text(systemPrompt)),
+                ChatMessage(role: "user", content: .text(snapshotJSON))
+            ],
+            temperature: 0.4,
+            jsonMode: true,
+            maxTokens: 1800
+        )
+
+        return try AIResponseParser.decodeJSONObject(MealAdviceResponse.self, from: content)
+    }
+
     func generateDietCoachAdvice(snapshot: DietCoachSnapshot, settings: AISettings) async throws -> DietCoachAdvice {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

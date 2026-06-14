@@ -11,6 +11,7 @@ struct FitnessAssistantApp: App {
         let schema = Schema([
             UserProfile.self,
             MealEntry.self,
+            MealAdviceRecord.self,
             ExerciseEntry.self,
             DailySummary.self,
             AISettings.self

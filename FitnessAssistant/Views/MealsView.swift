@@ -92,7 +92,7 @@ private struct MealRow: View {
             thumbnail
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(DateFormatter.shortTime.string(from: meal.date))
+                    Text("\(meal.mealType.title) · \(DateFormatter.shortTime.string(from: meal.date))")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -141,11 +141,16 @@ struct MealEditorView: View {
 
     @Query private var settings: [AISettings]
     @Query private var profiles: [UserProfile]
+    @Query(sort: \MealEntry.date, order: .reverse) private var mealHistory: [MealEntry]
+    @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
+    @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
 
     private let maxImageCount = 8
     /// 非空表示编辑既有记录，nil 表示新增。
     private let editingMeal: MealEntry?
 
+    @State private var mealDate: Date
+    @State private var mealType: MealType
     @State private var textDescription: String
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var imageDataList: [Data] = []
@@ -157,10 +162,13 @@ struct MealEditorView: View {
     @State private var confidence: Double
     @State private var items: [MealFoodItem]
     @State private var isEstimating = false
+    @State private var isSaving = false
     @State private var errorMessage: String?
 
     init(meal: MealEntry? = nil) {
         self.editingMeal = meal
+        _mealDate = State(initialValue: meal?.date ?? .now)
+        _mealType = State(initialValue: meal?.mealType ?? .other)
         _textDescription = State(initialValue: meal?.textDescription ?? "")
         _totalCalories = State(initialValue: Self.numberText(meal?.totalCalories, decimals: 0))
         _proteinGrams = State(initialValue: Self.numberText(meal?.proteinGrams, decimals: 1))
@@ -194,6 +202,12 @@ struct MealEditorView: View {
                 }
 
                 Section("记录") {
+                    Picker("餐别", selection: $mealType) {
+                        ForEach(MealType.allCases) { type in
+                            Text(type.title).tag(type)
+                        }
+                    }
+                    DatePicker("吃饭时间", selection: $mealDate)
                     TextEditor(text: $textDescription)
                         .frame(minHeight: 96)
                         .overlay(alignment: .topLeading) {
@@ -316,8 +330,16 @@ struct MealEditorView: View {
                     Button("取消") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { save() }
-                        .disabled(totalCalories.doubleValue == nil)
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if isSaving {
+                            ProgressView()
+                        } else {
+                            Text("保存")
+                        }
+                    }
+                    .disabled(totalCalories.doubleValue == nil || isSaving)
                 }
             }
             .onAppear { loadExistingPhotoIfNeeded() }
@@ -394,7 +416,12 @@ struct MealEditorView: View {
         }
     }
 
-    private func save() {
+    @MainActor
+    private func save() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+
         do {
             let photoFileName: String?
             if let firstImageData = imageDataList.first {
@@ -403,7 +430,10 @@ struct MealEditorView: View {
                 photoFileName = nil
             }
 
+            let savedMeal: MealEntry
             if let editingMeal {
+                editingMeal.date = mealDate
+                editingMeal.mealType = mealType
                 editingMeal.textDescription = textDescription
                 editingMeal.photoLocalPath = photoFileName
                 editingMeal.estimatedItems = items
@@ -414,9 +444,11 @@ struct MealEditorView: View {
                 editingMeal.confidence = confidence
                 editingMeal.isConfirmed = true
                 editingMeal.updatedAt = .now
+                savedMeal = editingMeal
             } else {
-                modelContext.insert(MealEntry(
-                    date: .now,
+                let meal = MealEntry(
+                    date: mealDate,
+                    mealType: mealType,
                     textDescription: textDescription,
                     photoLocalPath: photoFileName,
                     estimatedItems: items,
@@ -426,13 +458,135 @@ struct MealEditorView: View {
                     fatGrams: fatGrams.doubleValue ?? 0,
                     confidence: confidence,
                     isConfirmed: true
-                ))
+                )
+                modelContext.insert(meal)
+                savedMeal = meal
             }
             try modelContext.save()
+            await generateAndArchiveAdvice(for: savedMeal)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    @MainActor
+    private func generateAndArchiveAdvice(for meal: MealEntry) async {
+        guard let profile = profiles.first else { return }
+        let snapshot = buildMealAdviceSnapshot(for: meal, profile: profile)
+        let response: MealAdviceResponse
+
+        if let aiSettings = settings.first {
+            do {
+                response = try await aiClient.generateMealAdvice(snapshot: snapshot, settings: aiSettings)
+            } catch {
+                response = fallbackMealAdvice(snapshot: snapshot, error: error)
+            }
+        } else {
+            response = fallbackMealAdvice(snapshot: snapshot, error: nil)
+        }
+
+        modelContext.insert(MealAdviceRecord(
+            mealID: meal.id,
+            mealDate: meal.date,
+            mealType: meal.mealType,
+            mealDescription: meal.textDescription,
+            mealCalories: meal.totalCalories,
+            mealReview: response.mealReview,
+            nextMealAdvice: response.nextMealAdvice,
+            snackAdvice: response.snackAdvice,
+            caution: response.caution,
+            snapshot: snapshot
+        ))
+        try? modelContext.save()
+    }
+
+    private func buildMealAdviceSnapshot(for meal: MealEntry, profile: UserProfile) -> MealAdviceSnapshot {
+        let dayMeals = mealHistory
+            .filter { Calendar.current.isDate($0.date, inSameDayAs: meal.date) && $0.isConfirmed }
+        let mealsForSnapshot = (dayMeals.contains { $0.id == meal.id } ? dayMeals : [meal] + dayMeals)
+            .sorted { $0.date < $1.date }
+        let intake = mealsForSnapshot.reduce(0) { $0 + $1.totalCalories }
+        let protein = mealsForSnapshot.reduce(0) { $0 + $1.proteinGrams }
+        let carbs = mealsForSnapshot.reduce(0) { $0 + $1.carbsGrams }
+        let fat = mealsForSnapshot.reduce(0) { $0 + $1.fatGrams }
+        let active = exercises
+            .filter { Calendar.current.isDate($0.date, inSameDayAs: meal.date) }
+            .reduce(0) { $0 + $1.activeCalories }
+        let resting = CalorieCalculator.bmr(profile: profile)
+        let deficit = resting + active - intake
+        let recentDays = summaries
+            .filter { $0.date < Calendar.current.startOfDay(for: meal.date) }
+            .prefix(7)
+            .map {
+                DayTrend(
+                    date: $0.date,
+                    intakeCalories: $0.intakeCalories,
+                    calorieDeficit: $0.calorieDeficit,
+                    weightKg: $0.weightKg > 0 ? $0.weightKg : nil
+                )
+            }
+
+        var dailySnapshot = DailySnapshot(
+            date: meal.date,
+            goal: profile.goal.title,
+            targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
+            heightCm: profile.heightCm,
+            weightKg: profile.currentWeightKg,
+            gender: profile.gender.title,
+            age: profile.age,
+            bmr: resting,
+            intakeCalories: intake,
+            activeCalories: active,
+            restingCalories: resting,
+            totalBurnCalories: resting + active,
+            calorieDeficit: deficit,
+            proteinGrams: protein,
+            carbsGrams: carbs,
+            fatGrams: fat,
+            averageMealConfidence: nil,
+            unconfirmedMealCount: 0,
+            manualActiveCalories: nil,
+            meals: mealsForSnapshot.map { "\($0.mealType.title) \(DateFormatter.shortTime.string(from: $0.date)) \($0.textDescription) \($0.totalCalories.kcalText)" },
+            workouts: [],
+            recentDays: Array(recentDays),
+            analysis: nil
+        )
+        dailySnapshot.analysis = FatLossAnalyzer.analyze(snapshot: dailySnapshot)
+
+        return MealAdviceSnapshot(
+            mealID: meal.id,
+            mealType: meal.mealType.title,
+            mealDate: meal.date,
+            mealDescription: meal.textDescription,
+            mealCalories: meal.totalCalories,
+            mealProteinGrams: meal.proteinGrams,
+            mealCarbsGrams: meal.carbsGrams,
+            mealFatGrams: meal.fatGrams,
+            todayMeals: dailySnapshot.meals,
+            todayIntakeCalories: intake,
+            todayProteinGrams: protein,
+            todayCarbsGrams: carbs,
+            todayFatGrams: fat,
+            todayActiveCalories: active,
+            todayRestingCalories: resting,
+            todayCalorieDeficit: deficit,
+            goal: profile.goal.title,
+            targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
+            weightKg: profile.currentWeightKg,
+            analysis: dailySnapshot.analysis ?? FatLossAnalyzer.analyze(snapshot: dailySnapshot)
+        )
+    }
+
+    private func fallbackMealAdvice(snapshot: MealAdviceSnapshot, error: Error?) -> MealAdviceResponse {
+        let proteinGap = max(0, snapshot.analysis.proteinTargetLowerGrams - snapshot.todayProteinGrams)
+        let review = "\(snapshot.mealType)记录为 \(Int(snapshot.mealCalories.rounded())) kcal。当前今日热量差约 \(Int(snapshot.todayCalorieDeficit.rounded())) kcal，\(snapshot.analysis.energyMessage)"
+        let next = proteinGap > 20
+            ? "下一顿优先补蛋白：一份鱼虾/鸡胸/瘦肉/豆腐 + 2 拳蔬菜，按运动量加半碗到一碗主食。"
+            : "下一顿保持均衡：一份优质蛋白 + 2 拳蔬菜 + 适量主食，少油少酱。"
+        let snack = "零嘴控制在 100-200 kcal，优先无糖酸奶、牛奶、水果、茶叶蛋或少量坚果。"
+        let caution = error.map { "AI 暂时不可用，使用本地规则评价：\($0.localizedDescription)" } ?? "使用本地规则评价。"
+        return MealAdviceResponse(mealReview: review, nextMealAdvice: next, snackAdvice: snack, caution: caution)
     }
 
     /// 把可选的数值格式化为输入框文本：nil 或 0 时返回空串，避免新增时预填 "0"。

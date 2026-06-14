@@ -18,10 +18,11 @@ enum CSVExporter {
     }
 
     static func mealsCSV(_ meals: [MealEntry]) -> String {
-        var rows = [["日期", "描述", "总热量(kcal)", "蛋白质(g)", "碳水(g)", "脂肪(g)", "置信度", "已确认", "食物明细"]]
+        var rows = [["日期", "餐别", "描述", "总热量(kcal)", "蛋白质(g)", "碳水(g)", "脂肪(g)", "置信度", "已确认", "食物明细"]]
         rows += meals.sorted { $0.date < $1.date }.map { meal in
             [
                 DateFormatter.csvDateTime.string(from: meal.date),
+                meal.mealType.title,
                 meal.textDescription,
                 format(meal.totalCalories),
                 format(meal.proteinGrams),

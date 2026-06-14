@@ -5,6 +5,7 @@ import SwiftUI
 struct SummariesView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
+    @Query(sort: \MealAdviceRecord.createdAt, order: .reverse) private var mealAdviceRecords: [MealAdviceRecord]
 
     /// 近 14 天，按时间正序，用于趋势图。
     private var trendSummaries: [DailySummary] {
@@ -14,11 +15,11 @@ struct SummariesView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if summaries.isEmpty {
+                if summaries.isEmpty && mealAdviceRecords.isEmpty {
                     ContentUnavailableView {
                         Label("还没有每日总结", systemImage: "doc.text.magnifyingglass")
                     } description: {
-                        Text("在「今日」页同步并生成今日建议后，这里会留下每天的热量复盘和明日建议。")
+                        Text("同步生成今日建议，或保存饮食记录生成单餐评价后，这里会留下复盘和归档。")
                     }
                 } else {
                     List {
@@ -28,18 +29,38 @@ struct SummariesView: View {
                                     .padding(.vertical, 4)
                             }
                         }
-                        Section("每日记录") {
-                            ForEach(summaries) { summary in
-                                NavigationLink {
-                                    SummaryDetailView(summary: summary)
-                                } label: {
-                                    SummaryRow(summary: summary)
-                                }
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        delete(summary)
+                        if !summaries.isEmpty {
+                            Section("每日记录") {
+                                ForEach(summaries) { summary in
+                                    NavigationLink {
+                                        SummaryDetailView(summary: summary)
                                     } label: {
-                                        Label("删除", systemImage: "trash")
+                                        SummaryRow(summary: summary)
+                                    }
+                                    .swipeActions(edge: .trailing) {
+                                        Button(role: .destructive) {
+                                            delete(summary)
+                                        } label: {
+                                            Label("删除", systemImage: "trash")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if !mealAdviceRecords.isEmpty {
+                            Section("饮食评价归档") {
+                                ForEach(mealAdviceRecords) { record in
+                                    NavigationLink {
+                                        MealAdviceDetailView(record: record)
+                                    } label: {
+                                        MealAdviceArchiveRow(record: record)
+                                    }
+                                    .swipeActions(edge: .trailing) {
+                                        Button(role: .destructive) {
+                                            delete(record)
+                                        } label: {
+                                            Label("删除", systemImage: "trash")
+                                        }
                                     }
                                 }
                             }
@@ -53,6 +74,11 @@ struct SummariesView: View {
 
     private func delete(_ summary: DailySummary) {
         modelContext.delete(summary)
+        try? modelContext.save()
+    }
+
+    private func delete(_ record: MealAdviceRecord) {
+        modelContext.delete(record)
         try? modelContext.save()
     }
 }
@@ -222,6 +248,31 @@ private struct SummaryRow: View {
     }
 }
 
+private struct MealAdviceArchiveRow: View {
+    let record: MealAdviceRecord
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("\(record.mealType.title) · \(DateFormatter.shortTime.string(from: record.mealDate))")
+                    .font(.headline)
+                Spacer()
+                Text(record.mealCalories.kcalText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Text(record.mealDescription.isEmpty ? "未填写描述" : record.mealDescription)
+                .font(.subheadline)
+                .lineLimit(1)
+            Text(record.mealReview)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 /// 单日总结详情：完整热量明细 + 营养素/体重 + 当日饮食/运动清单 + AI 建议全文。
 struct SummaryDetailView: View {
     let summary: DailySummary
@@ -273,6 +324,59 @@ struct SummaryDetailView: View {
             }
         }
         .navigationTitle(DateFormatter.csvDate.string(from: summary.date))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct MealAdviceDetailView: View {
+    let record: MealAdviceRecord
+
+    var body: some View {
+        List {
+            Section("饮食记录") {
+                LabeledContent("餐别", value: record.mealType.title)
+                LabeledContent("时间", value: DateFormatter.dateHeader.string(from: record.mealDate) + " " + DateFormatter.shortTime.string(from: record.mealDate))
+                LabeledContent("热量", value: record.mealCalories.kcalText)
+                if !record.mealDescription.isEmpty {
+                    Text(record.mealDescription)
+                        .font(.body)
+                }
+            }
+
+            Section("这一顿评价") {
+                Text(record.mealReview)
+                    .textSelection(.enabled)
+            }
+
+            Section("下一顿建议") {
+                Text(record.nextMealAdvice)
+                    .textSelection(.enabled)
+            }
+
+            if !record.snackAdvice.isEmpty {
+                Section("零嘴建议") {
+                    Text(record.snackAdvice)
+                        .textSelection(.enabled)
+                }
+            }
+
+            if !record.caution.isEmpty {
+                Section("注意") {
+                    Text(record.caution)
+                        .textSelection(.enabled)
+                }
+            }
+
+            if let snapshot = record.snapshot, !snapshot.todayMeals.isEmpty {
+                Section("当日饮食快照") {
+                    ForEach(snapshot.todayMeals, id: \.self) { meal in
+                        Text(meal)
+                            .font(.subheadline)
+                    }
+                }
+            }
+        }
+        .navigationTitle(record.mealType.title)
         .navigationBarTitleDisplayMode(.inline)
     }
 }

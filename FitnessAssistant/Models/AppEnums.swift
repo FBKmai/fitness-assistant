@@ -45,3 +45,23 @@ enum ExerciseSource: String, CaseIterable, Codable, Identifiable {
         }
     }
 }
+
+enum MealType: String, CaseIterable, Codable, Identifiable {
+    case breakfast
+    case lunch
+    case dinner
+    case snack
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .breakfast: "早餐"
+        case .lunch: "午餐"
+        case .dinner: "晚餐"
+        case .snack: "零嘴"
+        case .other: "其他"
+        }
+    }
+}
