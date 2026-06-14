@@ -80,7 +80,7 @@ struct TodayView: View {
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 .listRowBackground(Color.clear)
 
-                Section("今日体重") {
+                Section {
                     HStack {
                         TextField("体重 kg", text: $todayWeightText)
                             .keyboardType(.decimalPad)
@@ -93,6 +93,8 @@ struct TodayView: View {
                         Label("保存今日体重", systemImage: "scalemass")
                     }
                     .disabled(!isValidWeight(todayWeightValue))
+                } header: {
+                    Text("今日体重")
                 } footer: {
                     Text("体重由你每天手动填写，不再从 Apple 健康读取；保存后会更新基础代谢和今日判断。")
                 }
