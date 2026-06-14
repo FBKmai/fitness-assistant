@@ -16,6 +16,9 @@ struct DailySnapshot: Codable {
     // 身体数据
     var heightCm: Double
     var weightKg: Double
+    var bodyFatPercentage: Double? = nil
+    var bodyMassIndex: Double? = nil
+    var bodyMetricsMeasuredAt: Date? = nil
     var gender: String
     var age: Int
     var bmr: Double
@@ -46,6 +49,9 @@ struct DietCoachSnapshot: Codable {
     var targetDailyDeficitKcal: Double
     var heightCm: Double
     var weightKg: Double
+    var bodyFatPercentage: Double? = nil
+    var bodyMassIndex: Double? = nil
+    var bodyMetricsMeasuredAt: Date? = nil
     var gender: String
     var age: Int
     var bmr: Double
@@ -89,8 +95,11 @@ final class DailySummary {
     var restingCalories: Double
     var totalBurnCalories: Double
     var calorieDeficit: Double
-    // 当日体重（kg）与三大营养素（克），用于趋势图。新增属性带内联默认值便于 SwiftData 轻量迁移。
+    // 当日身体指标与三大营养素（克），用于趋势图。新增属性带内联默认值便于 SwiftData 轻量迁移。
     var weightKg: Double = 0
+    var bodyFatPercentage: Double? = nil
+    var bodyMassIndex: Double? = nil
+    var bodyMetricsSyncedAt: Date? = nil
     var proteinGrams: Double = 0
     var carbsGrams: Double = 0
     var fatGrams: Double = 0
@@ -107,6 +116,9 @@ final class DailySummary {
         totalBurnCalories: Double = 0,
         calorieDeficit: Double = 0,
         weightKg: Double = 0,
+        bodyFatPercentage: Double? = nil,
+        bodyMassIndex: Double? = nil,
+        bodyMetricsSyncedAt: Date? = nil,
         proteinGrams: Double = 0,
         carbsGrams: Double = 0,
         fatGrams: Double = 0,
@@ -122,6 +134,9 @@ final class DailySummary {
         self.totalBurnCalories = totalBurnCalories
         self.calorieDeficit = calorieDeficit
         self.weightKg = weightKg
+        self.bodyFatPercentage = bodyFatPercentage
+        self.bodyMassIndex = bodyMassIndex
+        self.bodyMetricsSyncedAt = bodyMetricsSyncedAt
         self.proteinGrams = proteinGrams
         self.carbsGrams = carbsGrams
         self.fatGrams = fatGrams

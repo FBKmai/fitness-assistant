@@ -58,6 +58,12 @@ struct TodayView: View {
     private var deficitTint: Color { deficitReached ? .deficitReached : .deficitShort }
     private var hasTodayRecords: Bool { !todayMeals.isEmpty || !todayExercises.isEmpty }
     private var todayWeightValue: Double? { todayWeightText.doubleValue }
+    private var todayBodyFatPercentage: Double? { todaySummary?.bodyFatPercentage }
+    private var todayBodyMassIndex: Double? { todaySummary?.bodyMassIndex }
+    private var bodyMetricsSyncedText: String {
+        guard let date = todaySummary?.bodyMetricsSyncedAt else { return "尚未同步" }
+        return DateFormatter.shortTime.string(from: date)
+    }
     private var todayMealSignature: String {
         confirmedMeals
             .map { "\($0.id.uuidString):\($0.updatedAt.timeIntervalSince1970):\($0.mealTypeRaw):\($0.date.timeIntervalSince1970):\($0.totalCalories):\($0.proteinGrams):\($0.carbsGrams):\($0.fatGrams)" }
@@ -97,10 +103,19 @@ struct TodayView: View {
                         Label("保存今日体重", systemImage: "scalemass")
                     }
                     .disabled(!isValidWeight(todayWeightValue))
+                    Button {
+                        Task { await syncHealthKitOnly() }
+                    } label: {
+                        Label("从 Apple 健康同步身体数据", systemImage: "heart.text.square")
+                    }
+                    .disabled(isWorking)
+                    LabeledContent("体脂率", value: todayBodyFatPercentage.map { String(format: "%.1f%%", $0) } ?? "—")
+                    LabeledContent("BMI", value: todayBodyMassIndex.map { String(format: "%.1f", $0) } ?? "—")
+                    LabeledContent("身体数据同步", value: bodyMetricsSyncedText)
                 } header: {
-                    Text("今日体重")
+                    Text("今日身体数据")
                 } footer: {
-                    Text("体重由你每天手动填写，不再从 Apple 健康读取；保存后会更新基础代谢和今日判断。")
+                    Text("体脂秤写入 Apple 健康后，打开 App 或点击同步会读取当天最新体重、体脂率和 BMI；没有当天体重时可临时手动填写。")
                 }
 
                 if !hasTodayRecords {
@@ -203,6 +218,7 @@ struct TodayView: View {
                 refreshTodayWeightText()
             }
             .task {
+                await syncHealthKitOnly(silent: true)
                 if todaySummary == nil {
                     await syncAndGenerateSummary(silent: true)
                 }
@@ -254,6 +270,33 @@ struct TodayView: View {
     }
 
     @MainActor
+    private func syncHealthKitOnly(silent: Bool = false) async {
+        guard let profile else { return }
+        if isWorking { return }
+        isWorking = true
+        if !silent { statusMessage = "正在同步 Apple 健康身体数据..." }
+        defer { isWorking = false }
+
+        do {
+            try? await healthKitService.requestAuthorization()
+            let healthSnapshot = try await healthKitService.fetchSnapshot(for: .now)
+            upsertHealthEntries(from: healthSnapshot, profile: profile)
+            refreshTodaySummaryFromHealth(healthSnapshot, profile: profile)
+            try modelContext.save()
+
+            if !silent {
+                statusMessage = healthSnapshot.bodyMetrics.hasAnyValue
+                    ? "已同步 Apple 健康身体数据 \(DateFormatter.shortTime.string(from: .now))"
+                    : "Apple 健康今天还没有体脂秤数据，可先手动保存体重。"
+            }
+        } catch {
+            if !silent {
+                statusMessage = error.localizedDescription
+            }
+        }
+    }
+
+    @MainActor
     private func syncAndGenerateSummary(silent: Bool = false) async {
         guard let profile, let aiSettings else { return }
         if isWorking { return }
@@ -277,6 +320,12 @@ struct TodayView: View {
     }
 
     private func upsertHealthEntries(from snapshot: HealthSnapshot, profile: UserProfile) {
+        if let weight = snapshot.bodyMetrics.weightKg, isValidWeight(weight) {
+            profile.currentWeightKg = weight
+            profile.updatedAt = .now
+            todayWeightText = String(format: "%.1f", weight)
+        }
+
         let aggregateID = "daily-\(snapshot.date.dayKey)"
         let aggregate = exercises.first { $0.healthKitWorkoutID == aggregateID }
         if let aggregate {
@@ -315,6 +364,53 @@ struct TodayView: View {
         }
     }
 
+    private func refreshTodaySummaryFromHealth(_ snapshot: HealthSnapshot, profile: UserProfile) {
+        guard let todaySummary else { return }
+
+        let confirmedMeals = todayMeals.filter(\.isConfirmed)
+        let manualCalories = todayExercises
+            .filter { $0.source == .manual }
+            .reduce(0) { $0 + $1.activeCalories }
+        let intake = confirmedMeals.reduce(0) { $0 + $1.totalCalories }
+        let computation = CalorieCalculator.compute(
+            intakeCalories: intake,
+            healthKitActiveCalories: snapshot.activeEnergyKcal,
+            manualActiveCalories: manualCalories,
+            healthKitRestingCalories: nil,
+            profile: profile
+        )
+
+        todaySummary.intakeCalories = computation.intakeCalories
+        todaySummary.activeCalories = computation.activeCalories
+        todaySummary.restingCalories = computation.restingCalories
+        todaySummary.totalBurnCalories = computation.totalBurnCalories
+        todaySummary.calorieDeficit = computation.calorieDeficit
+        todaySummary.weightKg = snapshot.bodyMetrics.weightKg ?? profile.currentWeightKg
+        if let bodyFat = snapshot.bodyMetrics.bodyFatPercentage {
+            todaySummary.bodyFatPercentage = bodyFat
+        }
+        if let bodyMassIndex = snapshot.bodyMetrics.bodyMassIndex {
+            todaySummary.bodyMassIndex = bodyMassIndex
+        }
+        if snapshot.bodyMetrics.hasAnyValue {
+            todaySummary.bodyMetricsSyncedAt = snapshot.bodyMetrics.measuredAt ?? .now
+        }
+
+        if var existingSnapshot = todaySummary.snapshot {
+            existingSnapshot.weightKg = todaySummary.weightKg
+            existingSnapshot.bodyFatPercentage = todaySummary.bodyFatPercentage
+            existingSnapshot.bodyMassIndex = todaySummary.bodyMassIndex
+            existingSnapshot.bodyMetricsMeasuredAt = todaySummary.bodyMetricsSyncedAt
+            existingSnapshot.intakeCalories = computation.intakeCalories
+            existingSnapshot.activeCalories = computation.activeCalories
+            existingSnapshot.restingCalories = computation.restingCalories
+            existingSnapshot.totalBurnCalories = computation.totalBurnCalories
+            existingSnapshot.calorieDeficit = computation.calorieDeficit
+            existingSnapshot.analysis = FatLossAnalyzer.analyze(snapshot: existingSnapshot)
+            todaySummary.snapshot = existingSnapshot
+        }
+    }
+
     private func buildSummary(
         profile: UserProfile,
         settings: AISettings,
@@ -347,6 +443,9 @@ struct TodayView: View {
             ? nil
             : confidenceValues.reduce(0, +) / Double(confidenceValues.count)
         let unconfirmedMealCount = todayMeals.filter { !$0.isConfirmed }.count
+        let bodyFatPercentage = healthSnapshot.bodyMetrics.bodyFatPercentage ?? todaySummary?.bodyFatPercentage
+        let bodyMassIndex = healthSnapshot.bodyMetrics.bodyMassIndex ?? todaySummary?.bodyMassIndex
+        let bodyMetricsMeasuredAt = healthSnapshot.bodyMetrics.measuredAt ?? todaySummary?.bodyMetricsSyncedAt
 
         // 近 7 天趋势（不含今天），summaries 已按日期倒序排列。
         let todayStart = Calendar.current.startOfDay(for: .now)
@@ -368,6 +467,9 @@ struct TodayView: View {
             targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
             heightCm: profile.heightCm,
             weightKg: profile.currentWeightKg,
+            bodyFatPercentage: bodyFatPercentage,
+            bodyMassIndex: bodyMassIndex,
+            bodyMetricsMeasuredAt: bodyMetricsMeasuredAt,
             gender: profile.gender.title,
             age: profile.age,
             bmr: CalorieCalculator.bmr(profile: profile),
@@ -419,6 +521,9 @@ struct TodayView: View {
             totalBurnCalories: computation.totalBurnCalories,
             calorieDeficit: computation.calorieDeficit,
             weightKg: profile.currentWeightKg,
+            bodyFatPercentage: bodyFatPercentage,
+            bodyMassIndex: bodyMassIndex,
+            bodyMetricsSyncedAt: bodyMetricsMeasuredAt,
             proteinGrams: totalProtein,
             carbsGrams: totalCarbs,
             fatGrams: totalFat,
@@ -435,6 +540,9 @@ struct TodayView: View {
             existing.totalBurnCalories = newSummary.totalBurnCalories
             existing.calorieDeficit = newSummary.calorieDeficit
             existing.weightKg = newSummary.weightKg
+            existing.bodyFatPercentage = newSummary.bodyFatPercentage
+            existing.bodyMassIndex = newSummary.bodyMassIndex
+            existing.bodyMetricsSyncedAt = newSummary.bodyMetricsSyncedAt
             existing.proteinGrams = newSummary.proteinGrams
             existing.carbsGrams = newSummary.carbsGrams
             existing.fatGrams = newSummary.fatGrams
@@ -635,6 +743,9 @@ private struct DietCoachSheet: View {
             targetDailyDeficitKcal: dailySnapshot.targetDailyDeficitKcal,
             heightCm: dailySnapshot.heightCm,
             weightKg: dailySnapshot.weightKg,
+            bodyFatPercentage: dailySnapshot.bodyFatPercentage,
+            bodyMassIndex: dailySnapshot.bodyMassIndex,
+            bodyMetricsMeasuredAt: dailySnapshot.bodyMetricsMeasuredAt,
             gender: dailySnapshot.gender,
             age: dailySnapshot.age,
             bmr: dailySnapshot.bmr,
@@ -694,6 +805,9 @@ private struct DietCoachSheet: View {
             targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
             heightCm: profile.heightCm,
             weightKg: profile.currentWeightKg,
+            bodyFatPercentage: todaySummary?.bodyFatPercentage,
+            bodyMassIndex: todaySummary?.bodyMassIndex,
+            bodyMetricsMeasuredAt: todaySummary?.bodyMetricsSyncedAt,
             gender: profile.gender.title,
             age: profile.age,
             bmr: CalorieCalculator.bmr(profile: profile),

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - 尺寸与间距常量
 
@@ -152,6 +153,26 @@ extension View {
             .padding(AppMetrics.cardPadding)
             .background(Color.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cardCornerRadius))
+    }
+
+    /// 全局键盘控制：给数字键盘等没有 Return 键的输入方式补一个「完成」按钮。
+    func keyboardDismissControls() -> some View {
+        self
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("完成") {
+                        UIApplication.shared.dismissKeyboard()
+                    }
+                }
+            }
+    }
+}
+
+private extension UIApplication {
+    func dismissKeyboard() {
+        sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 

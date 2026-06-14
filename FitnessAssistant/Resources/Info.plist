@@ -27,7 +27,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>用于拍摄餐食照片，帮助估算饮食热量。</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>用于读取步数、活动热量、基础热量、训练记录和体重，以计算每日热量差。</string>
+	<string>用于读取步数、活动热量、训练记录、体重、体脂率和 BMI，以计算每日热量差与身体趋势。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于选择餐食照片，帮助估算饮食热量。</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

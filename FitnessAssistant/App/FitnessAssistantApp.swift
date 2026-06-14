@@ -27,6 +27,7 @@ struct FitnessAssistantApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .keyboardDismissControls()
                 .environmentObject(healthKitService)
                 .environmentObject(aiClient)
                 .environmentObject(notificationScheduler)

@@ -69,6 +69,7 @@ struct SettingsView: View {
                     Stepper(value: $targetDeficit, in: 100...1000, step: 50) {
                         LabeledContent("热量缺口目标", value: "\(Int(targetDeficit)) kcal")
                     }
+                    LabeledContent("称重提醒", value: "每天 08:00")
                     DatePicker("晚间提醒", selection: $reminderTime, displayedComponents: .hourAndMinute)
                     if !weightValid {
                         Text("请输入 30-250 kg 之间的体重。")
@@ -151,7 +152,7 @@ struct SettingsView: View {
                     Button {
                         Task { await scheduleReminder() }
                     } label: {
-                        Label("更新晚间提醒", systemImage: "bell.badge")
+                        Label("更新每日提醒", systemImage: "bell.badge")
                     }
                 }
 
@@ -271,6 +272,12 @@ struct SettingsView: View {
             }
             try modelContext.save()
             refreshKeyStatus()
+            let reminderHour = profile.reminderHour
+            let reminderMinute = profile.reminderMinute
+            Task {
+                try? await notificationScheduler.scheduleDailyReminders(nightlyHour: reminderHour, nightlyMinute: reminderMinute)
+                await refreshNotificationStatus()
+            }
             setMessage("已保存", isError: false)
         } catch {
             setMessage(error.localizedDescription, isError: true)
@@ -350,9 +357,9 @@ struct SettingsView: View {
         guard let profile = profiles.first else { return }
         do {
             try await notificationScheduler.requestAuthorization()
-            try await notificationScheduler.scheduleNightlyReminder(profile: profile)
+            try await notificationScheduler.scheduleDailyReminders(profile: profile)
             await refreshNotificationStatus()
-            setMessage("已更新晚间提醒", isError: false)
+            setMessage("已更新称重和晚间提醒", isError: false)
         } catch {
             setMessage(error.localizedDescription, isError: true)
         }

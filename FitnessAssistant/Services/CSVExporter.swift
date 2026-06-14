@@ -53,7 +53,7 @@ enum CSVExporter {
     }
 
     static func summariesCSV(_ summaries: [DailySummary]) -> String {
-        var rows = [["日期", "摄入(kcal)", "活动消耗(kcal)", "基础消耗(kcal)", "总消耗(kcal)", "热量差(kcal)", "建议", "生成时间"]]
+        var rows = [["日期", "摄入(kcal)", "活动消耗(kcal)", "基础消耗(kcal)", "总消耗(kcal)", "热量差(kcal)", "体重(kg)", "体脂率(%)", "BMI", "身体数据同步时间", "建议", "生成时间"]]
         rows += summaries.sorted { $0.date < $1.date }.map { summary in
             [
                 DateFormatter.csvDate.string(from: summary.date),
@@ -62,6 +62,10 @@ enum CSVExporter {
                 format(summary.restingCalories),
                 format(summary.totalBurnCalories),
                 format(summary.calorieDeficit),
+                summary.weightKg > 0 ? format(summary.weightKg) : "",
+                summary.bodyFatPercentage.map(format) ?? "",
+                summary.bodyMassIndex.map(format) ?? "",
+                summary.bodyMetricsSyncedAt.map { DateFormatter.csvDateTime.string(from: $0) } ?? "",
                 summary.adviceText,
                 DateFormatter.csvDateTime.string(from: summary.generatedAt)
             ]

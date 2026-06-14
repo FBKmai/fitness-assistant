@@ -510,6 +510,8 @@ struct MealEditorView: View {
         let protein = mealsForSnapshot.reduce(0) { $0 + $1.proteinGrams }
         let carbs = mealsForSnapshot.reduce(0) { $0 + $1.carbsGrams }
         let fat = mealsForSnapshot.reduce(0) { $0 + $1.fatGrams }
+        let daySummary = summaries.first { Calendar.current.isDate($0.date, inSameDayAs: meal.date) }
+        let weightKg = daySummary?.weightKg ?? profile.currentWeightKg
         let active = exercises
             .filter { Calendar.current.isDate($0.date, inSameDayAs: meal.date) }
             .reduce(0) { $0 + $1.activeCalories }
@@ -532,7 +534,10 @@ struct MealEditorView: View {
             goal: profile.goal.title,
             targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
             heightCm: profile.heightCm,
-            weightKg: profile.currentWeightKg,
+            weightKg: weightKg,
+            bodyFatPercentage: daySummary?.bodyFatPercentage,
+            bodyMassIndex: daySummary?.bodyMassIndex,
+            bodyMetricsMeasuredAt: daySummary?.bodyMetricsSyncedAt,
             gender: profile.gender.title,
             age: profile.age,
             bmr: resting,
@@ -573,7 +578,7 @@ struct MealEditorView: View {
             todayCalorieDeficit: deficit,
             goal: profile.goal.title,
             targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
-            weightKg: profile.currentWeightKg,
+            weightKg: weightKg,
             analysis: dailySnapshot.analysis ?? FatLossAnalyzer.analyze(snapshot: dailySnapshot)
         )
     }

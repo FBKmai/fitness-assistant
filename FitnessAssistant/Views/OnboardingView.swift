@@ -92,7 +92,7 @@ struct OnboardingView: View {
                 } header: {
                     Text("减脂目标")
                 } footer: {
-                    Text("热量缺口越大减脂越快，但过大不易坚持，推荐 300–500 kcal。每晚此时提醒你记录当天数据。")
+                    Text("热量缺口越大减脂越快，但过大不易坚持，推荐 300–500 kcal。每天 08:00 提醒称体重，每晚此时提醒你记录当天数据。")
                 }
 
                 Section {
@@ -216,7 +216,7 @@ struct OnboardingView: View {
 
             try? await healthKitService.requestAuthorization()
             try? await notificationScheduler.requestAuthorization()
-            try? await notificationScheduler.scheduleNightlyReminder(profile: profile)
+            try? await notificationScheduler.scheduleDailyReminders(profile: profile)
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -11,12 +11,24 @@ struct HealthWorkout: Identifiable, Hashable {
     var activeCalories: Double
 }
 
+struct HealthBodyMetrics: Hashable {
+    var weightKg: Double? = nil
+    var bodyFatPercentage: Double? = nil
+    var bodyMassIndex: Double? = nil
+    var measuredAt: Date? = nil
+
+    var hasAnyValue: Bool {
+        weightKg != nil || bodyFatPercentage != nil || bodyMassIndex != nil
+    }
+}
+
 struct HealthSnapshot {
     var date: Date
     var steps: Double
     var activeEnergyKcal: Double
     var basalEnergyKcal: Double?
     var workouts: [HealthWorkout]
+    var bodyMetrics: HealthBodyMetrics
 }
 
 @MainActor
@@ -31,6 +43,9 @@ final class HealthKitService: ObservableObject {
         var types = Set<HKObjectType>()
         if let step = HKQuantityType.quantityType(forIdentifier: .stepCount) { types.insert(step) }
         if let active = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) { types.insert(active) }
+        if let bodyMass = HKQuantityType.quantityType(forIdentifier: .bodyMass) { types.insert(bodyMass) }
+        if let bodyFat = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage) { types.insert(bodyFat) }
+        if let bodyMassIndex = HKQuantityType.quantityType(forIdentifier: .bodyMassIndex) { types.insert(bodyMassIndex) }
         types.insert(HKObjectType.workoutType())
         return types
     }
@@ -51,28 +66,39 @@ final class HealthKitService: ObservableObject {
             }
         }
         authorizationStatusDescription = "已请求授权"
+        await enableBodyMetricBackgroundDelivery()
     }
 
     func fetchSnapshot(for date: Date = .now) async throws -> HealthSnapshot {
         guard isAvailable else {
-            return HealthSnapshot(date: date, steps: 0, activeEnergyKcal: 0, basalEnergyKcal: nil, workouts: [])
+            return HealthSnapshot(
+                date: date,
+                steps: 0,
+                activeEnergyKcal: 0,
+                basalEnergyKcal: nil,
+                workouts: [],
+                bodyMetrics: HealthBodyMetrics()
+            )
         }
 
         let interval = Calendar.current.dayInterval(containing: date)
         async let stepsValue = quantitySum(.stepCount, unit: .count(), start: interval.start, end: interval.end)
         async let activeEnergyValue = quantitySum(.activeEnergyBurned, unit: .kilocalorie(), start: interval.start, end: interval.end)
         async let workoutValues = workouts(start: interval.start, end: interval.end)
+        async let bodyMetricsValue = bodyMetrics(start: interval.start, end: interval.end)
 
         let stepCount = try await stepsValue
         let activeEnergy = try await activeEnergyValue
         let workouts = try await workoutValues
+        let bodyMetrics = try await bodyMetricsValue
 
         let snapshot = HealthSnapshot(
             date: date,
             steps: stepCount,
             activeEnergyKcal: activeEnergy,
             basalEnergyKcal: nil,
-            workouts: workouts
+            workouts: workouts,
+            bodyMetrics: bodyMetrics
         )
         lastSyncDate = .now
         authorizationStatusDescription = "最近同步 \(DateFormatter.shortTime.string(from: .now))"
@@ -125,6 +151,71 @@ final class HealthKitService: ObservableObject {
             }
             healthStore.execute(query)
         }
+    }
+
+    private func bodyMetrics(start: Date, end: Date) async throws -> HealthBodyMetrics {
+        async let weight = latestQuantity(.bodyMass, unit: .gramUnit(with: .kilo), start: start, end: end)
+        async let bodyFat = latestQuantity(.bodyFatPercentage, unit: .percent(), start: start, end: end)
+        async let bodyMassIndex = latestQuantity(.bodyMassIndex, unit: .count(), start: start, end: end)
+
+        let weightReading = try await weight
+        let bodyFatReading = try await bodyFat
+        let bodyMassIndexReading = try await bodyMassIndex
+        let measuredAt = [weightReading?.date, bodyFatReading?.date, bodyMassIndexReading?.date]
+            .compactMap(\.self)
+            .max()
+
+        return HealthBodyMetrics(
+            weightKg: weightReading?.value,
+            bodyFatPercentage: bodyFatReading.map { normalizedPercent($0.value) },
+            bodyMassIndex: bodyMassIndexReading?.value,
+            measuredAt: measuredAt
+        )
+    }
+
+    private func latestQuantity(
+        _ identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        start: Date,
+        end: Date
+    ) async throws -> (value: Double, date: Date)? {
+        guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else { return nil }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate])
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(value: Double, date: Date)?, Error>) in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: 1, sortDescriptors: [sort]) { _, samples, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let sample = samples?.first as? HKQuantitySample else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: (sample.quantity.doubleValue(for: unit), sample.endDate))
+            }
+            healthStore.execute(query)
+        }
+    }
+
+    private func enableBodyMetricBackgroundDelivery() async {
+        for identifier in [HKQuantityTypeIdentifier.bodyMass, .bodyFatPercentage, .bodyMassIndex] {
+            guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else { continue }
+            _ = try? await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
+                healthStore.enableBackgroundDelivery(for: type, frequency: .daily) { success, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: success)
+                    }
+                }
+            }
+        }
+    }
+
+    private func normalizedPercent(_ value: Double) -> Double {
+        value <= 1 ? value * 100 : value
     }
 }
 

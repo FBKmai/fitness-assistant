@@ -234,6 +234,9 @@ private struct SummaryRow: View {
             HStack(spacing: 14) {
                 Label(summary.intakeCalories.kcalText, systemImage: "fork.knife")
                 Label(summary.totalBurnCalories.kcalText, systemImage: "flame")
+                if summary.weightKg > 0 {
+                    Label(String(format: "%.1f kg", summary.weightKg), systemImage: "scalemass")
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -295,6 +298,9 @@ struct SummaryDetailView: View {
                 LabeledContent("碳水", value: "\(Int(summary.carbsGrams)) g")
                 LabeledContent("脂肪", value: "\(Int(summary.fatGrams)) g")
                 LabeledContent("体重", value: summary.weightKg > 0 ? String(format: "%.1f kg", summary.weightKg) : "—")
+                LabeledContent("体脂率", value: summary.bodyFatPercentage.map { String(format: "%.1f%%", $0) } ?? "—")
+                LabeledContent("BMI", value: summary.bodyMassIndex.map { String(format: "%.1f", $0) } ?? "—")
+                LabeledContent("身体数据同步", value: summary.bodyMetricsSyncedAt.map { DateFormatter.csvDateTime.string(from: $0) } ?? "—")
             }
 
             if let meals = summary.snapshot?.meals, !meals.isEmpty {
