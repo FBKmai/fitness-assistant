@@ -14,6 +14,7 @@ struct TodayView: View {
 
     @State private var isWorking = false
     @State private var statusMessage = "打开后可同步健康数据并生成今日建议"
+    @State private var showingDietCoach = false
 
     /// 由 MainTabView 注入，用于空态快捷按钮切换到「饮食」「运动」Tab。
     var selection: Binding<Int>? = nil
@@ -87,11 +88,26 @@ struct TodayView: View {
                     LabeledContent("HealthKit", value: healthKitService.authorizationStatusDescription)
                     LabeledContent("饮食记录", value: "\(todayMeals.count) 条")
                     LabeledContent("运动记录", value: "\(todayExercises.count) 条")
+                    if let analysis = todaySummary?.snapshot?.analysis {
+                        LabeledContent("减脂判断", value: analysis.energyStatus)
+                        LabeledContent("数据可信度", value: "\(Int((analysis.dataQualityScore * 100).rounded()))%")
+                    }
                     if let todaySummary {
                         LabeledContent("建议生成", value: DateFormatter.shortTime.string(from: todaySummary.generatedAt))
                     } else {
                         LabeledContent("建议生成", value: "未生成")
                     }
+                }
+
+                Section {
+                    Button {
+                        showingDietCoach = true
+                    } label: {
+                        Label("问 AI 现在怎么吃", systemImage: "bubble.left.and.text.bubble.right")
+                    }
+                    .disabled(profile == nil || aiSettings == nil)
+                } footer: {
+                    Text("结合今天记录、近 7 天趋势和你的即时问题，给出这一餐及后续安排建议。")
                 }
 
                 if let advice = todaySummary?.adviceText, !advice.isEmpty {
@@ -124,6 +140,17 @@ struct TodayView: View {
             .task {
                 if todaySummary == nil {
                     await syncAndGenerateSummary(silent: true)
+                }
+            }
+            .sheet(isPresented: $showingDietCoach) {
+                if let profile, let aiSettings {
+                    DietCoachSheet(
+                        profile: profile,
+                        settings: aiSettings,
+                        meals: meals,
+                        exercises: exercises,
+                        summaries: summaries
+                    )
                 }
             }
         }
@@ -223,6 +250,11 @@ struct TodayView: View {
         let totalProtein = confirmedMeals.reduce(0) { $0 + $1.proteinGrams }
         let totalCarbs = confirmedMeals.reduce(0) { $0 + $1.carbsGrams }
         let totalFat = confirmedMeals.reduce(0) { $0 + $1.fatGrams }
+        let confidenceValues = confirmedMeals.map(\.confidence).filter { $0 > 0 }
+        let averageMealConfidence = confidenceValues.isEmpty
+            ? nil
+            : confidenceValues.reduce(0, +) / Double(confidenceValues.count)
+        let unconfirmedMealCount = todayMeals.filter { !$0.isConfirmed }.count
 
         // 近 7 天趋势（不含今天），summaries 已按日期倒序排列。
         let todayStart = Calendar.current.startOfDay(for: .now)
@@ -238,7 +270,7 @@ struct TodayView: View {
                 )
             }
 
-        let snapshot = DailySnapshot(
+        var snapshot = DailySnapshot(
             date: .now,
             goal: profile.goal.title,
             targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
@@ -255,10 +287,15 @@ struct TodayView: View {
             proteinGrams: totalProtein,
             carbsGrams: totalCarbs,
             fatGrams: totalFat,
+            averageMealConfidence: averageMealConfidence,
+            unconfirmedMealCount: unconfirmedMealCount,
+            manualActiveCalories: manualCalories,
             meals: mealTexts,
             workouts: workoutTexts,
-            recentDays: Array(recentDays)
+            recentDays: Array(recentDays),
+            analysis: nil
         )
+        snapshot.analysis = FatLossAnalyzer.analyze(snapshot: snapshot)
 
         let adviceText: String
         do {
@@ -309,16 +346,272 @@ struct TodayView: View {
     }
 
     private func fallbackAdvice(snapshot: DailySnapshot, error: Error) -> String {
-        let gap = snapshot.calorieDeficit
-        let trend = gap >= snapshot.targetDailyDeficitKcal ? "今天热量缺口已达到目标。" : "今天热量缺口还没有达到目标。"
+        let analysis = snapshot.analysis ?? FatLossAnalyzer.analyze(snapshot: snapshot)
+        let warningText = analysis.warnings.isEmpty ? "" : "\n\n注意：\(analysis.warnings.joined(separator: "；"))"
+        let actionText = analysis.nextActions.joined(separator: "；")
         return """
-        \(trend)
+        \(analysis.energyStatus)：\(analysis.energyMessage)
 
-        明天饮食：优先保证蛋白质和蔬菜，主食按训练量调整，避免因为缺口不足而极端节食。
+        明天饮食：\(actionText)
 
         明天运动：保持中等强度活动，如果今天训练量较低，可以增加 30-45 分钟快走或力量训练。
 
-        AI 建议暂未生成：\(error.localizedDescription)
+        数据可信度：\(Int((analysis.dataQualityScore * 100).rounded()))%。AI 建议暂未生成：\(error.localizedDescription)\(warningText)
         """
+    }
+}
+
+private struct DietCoachSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var aiClient: AIClient
+
+    let profile: UserProfile
+    let settings: AISettings
+    let meals: [MealEntry]
+    let exercises: [ExerciseEntry]
+    let summaries: [DailySummary]
+
+    @State private var question = "今天晚上要运动，现在是中午，我适合吃什么？"
+    @State private var advice: DietCoachAdvice?
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+
+    private var todayMeals: [MealEntry] {
+        meals.filter { Calendar.current.isDateInToday($0.date) }
+    }
+
+    private var confirmedMeals: [MealEntry] {
+        todayMeals.filter(\.isConfirmed)
+    }
+
+    private var todayExercises: [ExerciseEntry] {
+        exercises.filter { Calendar.current.isDateInToday($0.date) }
+    }
+
+    private var todaySummary: DailySummary? {
+        summaries.first { Calendar.current.isDateInToday($0.date) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let errorMessage {
+                    Section {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+                }
+
+                Section("你的问题") {
+                    ZStack(alignment: .topLeading) {
+                        TextEditor(text: $question)
+                            .frame(minHeight: 96)
+                        if question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text("例如：今天晚上要力量训练，现在午餐适合吃什么？")
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 8)
+                                .allowsHitTesting(false)
+                        }
+                    }
+
+                    Button {
+                        Task { await askAI() }
+                    } label: {
+                        if isLoading {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text("生成中…")
+                            }
+                        } else {
+                            Label("生成饮食建议", systemImage: "sparkles")
+                        }
+                    }
+                    .disabled(isLoading || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+
+                Section("当前数据") {
+                    LabeledContent("今日摄入", value: totalIntake.kcalText)
+                    LabeledContent("蛋白质", value: "\(Int(totalProtein.rounded())) g")
+                    LabeledContent("碳水", value: "\(Int(totalCarbs.rounded())) g")
+                    LabeledContent("脂肪", value: "\(Int(totalFat.rounded())) g")
+                    LabeledContent("减脂判断", value: currentAnalysis.energyStatus)
+                    LabeledContent("数据可信度", value: "\(Int((currentAnalysis.dataQualityScore * 100).rounded()))%")
+                }
+
+                if let advice {
+                    Section("现在这一餐") {
+                        Text(advice.currentMealAdvice)
+                            .textSelection(.enabled)
+                    }
+                    Section("运动前后") {
+                        Text(advice.workoutFuelAdvice)
+                            .textSelection(.enabled)
+                    }
+                    Section("今天剩余安排") {
+                        Text(advice.remainingDayPlan)
+                            .textSelection(.enabled)
+                    }
+                    if !advice.caution.isEmpty {
+                        Section("注意") {
+                            Text(advice.caution)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("即时饮食建议")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") { dismiss() }
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func askAI() async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        let snapshot = buildDietCoachSnapshot()
+        do {
+            advice = try await aiClient.generateDietCoachAdvice(snapshot: snapshot, settings: settings)
+        } catch {
+            errorMessage = "AI 暂时不可用，已给出本地规则建议：\(error.localizedDescription)"
+            advice = fallbackAdvice(snapshot: snapshot)
+        }
+    }
+
+    private var totalIntake: Double {
+        confirmedMeals.reduce(0) { $0 + $1.totalCalories }
+    }
+
+    private var totalProtein: Double {
+        confirmedMeals.reduce(0) { $0 + $1.proteinGrams }
+    }
+
+    private var totalCarbs: Double {
+        confirmedMeals.reduce(0) { $0 + $1.carbsGrams }
+    }
+
+    private var totalFat: Double {
+        confirmedMeals.reduce(0) { $0 + $1.fatGrams }
+    }
+
+    private var currentAnalysis: FatLossAnalysis {
+        FatLossAnalyzer.analyze(snapshot: buildDailySnapshotForCoach())
+    }
+
+    private func buildDietCoachSnapshot() -> DietCoachSnapshot {
+        let dailySnapshot = buildDailySnapshotForCoach()
+        let analysis = FatLossAnalyzer.analyze(snapshot: dailySnapshot)
+        return DietCoachSnapshot(
+            requestedAt: .now,
+            userQuestion: question,
+            goal: dailySnapshot.goal,
+            targetDailyDeficitKcal: dailySnapshot.targetDailyDeficitKcal,
+            heightCm: dailySnapshot.heightCm,
+            weightKg: dailySnapshot.weightKg,
+            gender: dailySnapshot.gender,
+            age: dailySnapshot.age,
+            bmr: dailySnapshot.bmr,
+            todayIntakeCalories: dailySnapshot.intakeCalories,
+            todayActiveCalories: dailySnapshot.activeCalories,
+            todayRestingCalories: dailySnapshot.restingCalories,
+            todayTotalBurnCalories: dailySnapshot.totalBurnCalories,
+            todayCalorieDeficit: dailySnapshot.calorieDeficit,
+            proteinGrams: dailySnapshot.proteinGrams,
+            carbsGrams: dailySnapshot.carbsGrams,
+            fatGrams: dailySnapshot.fatGrams,
+            averageMealConfidence: dailySnapshot.averageMealConfidence,
+            todayMeals: dailySnapshot.meals,
+            todayWorkouts: dailySnapshot.workouts,
+            recentDays: dailySnapshot.recentDays,
+            analysis: analysis
+        )
+    }
+
+    private func buildDailySnapshotForCoach() -> DailySnapshot {
+        let manualCalories = todayExercises
+            .filter { $0.source == .manual }
+            .reduce(0) { $0 + $1.activeCalories }
+        let healthAggregateCalories = todayExercises.first {
+            $0.source == .healthKit && ($0.healthKitWorkoutID?.hasPrefix("daily-") ?? false)
+        }?.activeCalories ?? 0
+        let activeCalories = todaySummary?.activeCalories ?? (healthAggregateCalories + manualCalories)
+        let restingCalories = todaySummary?.restingCalories ?? CalorieCalculator.bmr(profile: profile)
+        let totalBurn = todaySummary?.totalBurnCalories ?? (activeCalories + restingCalories)
+        let deficit = totalBurn - totalIntake
+        let confidenceValues = confirmedMeals.map(\.confidence).filter { $0 > 0 }
+        let averageMealConfidence = confidenceValues.isEmpty
+            ? nil
+            : confidenceValues.reduce(0, +) / Double(confidenceValues.count)
+        let mealTexts = confirmedMeals.map { meal in
+            "\(DateFormatter.shortTime.string(from: meal.date)) \(meal.textDescription) \(meal.totalCalories.kcalText) 蛋白\(Int(meal.proteinGrams))g 碳水\(Int(meal.carbsGrams))g 脂肪\(Int(meal.fatGrams))g"
+        }
+        let workoutTexts = todayExercises.map { exercise in
+            "\(exercise.source.title) \(exercise.workoutType) \(exercise.activeCalories.kcalText)"
+        }
+        let todayStart = Calendar.current.startOfDay(for: .now)
+        let recentDays = summaries
+            .filter { $0.date < todayStart }
+            .prefix(7)
+            .map { day in
+                DayTrend(
+                    date: day.date,
+                    intakeCalories: day.intakeCalories,
+                    calorieDeficit: day.calorieDeficit,
+                    weightKg: day.weightKg > 0 ? day.weightKg : nil
+                )
+            }
+
+        var snapshot = DailySnapshot(
+            date: .now,
+            goal: profile.goal.title,
+            targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
+            heightCm: profile.heightCm,
+            weightKg: profile.currentWeightKg,
+            gender: profile.gender.title,
+            age: profile.age,
+            bmr: CalorieCalculator.bmr(profile: profile),
+            intakeCalories: totalIntake,
+            activeCalories: activeCalories,
+            restingCalories: restingCalories,
+            totalBurnCalories: totalBurn,
+            calorieDeficit: deficit,
+            proteinGrams: totalProtein,
+            carbsGrams: totalCarbs,
+            fatGrams: totalFat,
+            averageMealConfidence: averageMealConfidence,
+            unconfirmedMealCount: todayMeals.filter { !$0.isConfirmed }.count,
+            manualActiveCalories: manualCalories,
+            meals: mealTexts,
+            workouts: workoutTexts,
+            recentDays: Array(recentDays),
+            analysis: nil
+        )
+        snapshot.analysis = FatLossAnalyzer.analyze(snapshot: snapshot)
+        return snapshot
+    }
+
+    private func fallbackAdvice(snapshot: DietCoachSnapshot) -> DietCoachAdvice {
+        let analysis = snapshot.analysis
+        let proteinGap = max(0, analysis.proteinTargetLowerGrams - snapshot.proteinGrams)
+        let currentMeal = proteinGap > 20
+            ? "这一餐优先补蛋白：选择一份瘦肉、鱼虾、鸡蛋、豆腐或无糖酸奶，搭配 2 拳蔬菜。若晚上要运动，再加半碗到一碗米饭、面、土豆或燕麦。"
+            : "这一餐保持清爽均衡：一份优质蛋白 + 2 拳蔬菜 + 按饥饿感加入半碗主食，少油烹饪。"
+        let workout = question.contains("运动") || question.contains("训练")
+            ? "运动前 2-4 小时保留适量碳水和蛋白；运动后如果还饿，补一份蛋白和少量主食，不要用高油夜宵补偿。"
+            : "如果今天后面没有高强度运动，主食按半碗左右开始，根据饥饿感和今日缺口调整。"
+        let remaining = analysis.nextActions.joined(separator: "；")
+        let caution = (analysis.warnings + analysis.dataQualityNotes).joined(separator: "；")
+        return DietCoachAdvice(
+            currentMealAdvice: currentMeal,
+            workoutFuelAdvice: workout,
+            remainingDayPlan: remaining.isEmpty ? analysis.energyMessage : remaining,
+            caution: caution.isEmpty ? "这是本地规则建议，AI 恢复后可以生成更个性化的版本。" : caution
+        )
     }
 }

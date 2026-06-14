@@ -29,10 +29,46 @@ struct DailySnapshot: Codable {
     var proteinGrams: Double
     var carbsGrams: Double
     var fatGrams: Double
+    var averageMealConfidence: Double?
+    var unconfirmedMealCount: Int?
+    var manualActiveCalories: Double?
     var meals: [String]
     var workouts: [String]
     // 近 7 天趋势（不含今天）
     var recentDays: [DayTrend]
+    var analysis: FatLossAnalysis?
+}
+
+struct DietCoachSnapshot: Codable {
+    var requestedAt: Date
+    var userQuestion: String
+    var goal: String
+    var targetDailyDeficitKcal: Double
+    var heightCm: Double
+    var weightKg: Double
+    var gender: String
+    var age: Int
+    var bmr: Double
+    var todayIntakeCalories: Double
+    var todayActiveCalories: Double
+    var todayRestingCalories: Double
+    var todayTotalBurnCalories: Double
+    var todayCalorieDeficit: Double
+    var proteinGrams: Double
+    var carbsGrams: Double
+    var fatGrams: Double
+    var averageMealConfidence: Double?
+    var todayMeals: [String]
+    var todayWorkouts: [String]
+    var recentDays: [DayTrend]
+    var analysis: FatLossAnalysis
+}
+
+struct DietCoachAdvice: Codable {
+    var currentMealAdvice: String
+    var workoutFuelAdvice: String
+    var remainingDayPlan: String
+    var caution: String
 }
 
 struct DailyAdvice: Codable {

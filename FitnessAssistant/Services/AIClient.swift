@@ -99,11 +99,13 @@ final class AIClient: ObservableObject {
 
         let systemPrompt = """
         你是一个中文健身饮食监督助手。下面的 JSON 包含用户的身体数据（身高、体重、性别、年龄、基础代谢 bmr）、
-        当天摄入/消耗/热量差、三大营养素合计、每餐与运动记录，以及近 7 天趋势 recentDays（每天的热量缺口和体重）。
+        当天摄入/消耗/热量差、三大营养素合计、每餐与运动记录、近 7 天趋势 recentDays（每天的热量缺口和体重），
+        以及 analysis 字段中的本地规则化减脂判断（缺口范围、蛋白目标、风险提醒和数据质量）。
         请综合这些数据为用户生成第二天建议：
         1. 结合身高体重年龄性别与 bmr 判断当天摄入是否过低或过高；
         2. 结合三大营养素点评蛋白质、碳水、脂肪是否合理（减脂期重点关注蛋白质是否充足）；
         3. 结合 recentDays 趋势说明最近进展（热量缺口是否稳定、体重变化方向）；若数据不足则说明无法判断趋势。
+        4. 优先尊重 analysis 的风险和数据质量判断，不要建议极端节食或用过量运动弥补饮食。
         目标是减脂，建议要现实、可执行、个性化，不提供医疗诊断。
         只返回 JSON，不要使用 markdown。
         JSON 格式：
@@ -129,6 +131,45 @@ final class AIClient: ObservableObject {
         )
 
         return try AIResponseParser.decodeJSONObject(DailyAdvice.self, from: content)
+    }
+
+    func generateDietCoachAdvice(snapshot: DietCoachSnapshot, settings: AISettings) async throws -> DietCoachAdvice {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let snapshotData = try encoder.encode(snapshot)
+        let snapshotJSON = String(data: snapshotData, encoding: .utf8) ?? "{}"
+
+        let systemPrompt = """
+        你是一个中文减脂饮食顾问。用户会问“现在这一餐怎么吃”一类问题。
+        下面的 JSON 包含用户身体资料、今日已吃内容、今日运动/消耗、近 7 天趋势、以及本地规则化 analysis。
+        请回答用户当前这一餐该怎么吃，并考虑接下来是否还有运动、今天已经吃了什么、蛋白质是否够、热量缺口是否过大或过小。
+        要具体到可执行食物组合和份量范围，例如“1 份掌心大小鸡胸/鱼/豆腐 + 1 碗米饭的 1/2-1 碗 + 2 拳蔬菜”。
+        如果用户提到晚上运动，请说明中午/下午是否需要碳水和蛋白，避免空腹硬撑或暴食补偿。
+        不提供医疗诊断，不建议极端节食。若数据不足，要明确说明不确定性。
+        只返回 JSON，不要使用 markdown。
+        JSON 格式：
+        {
+          "currentMealAdvice": "现在这一餐怎么吃",
+          "workoutFuelAdvice": "如果接下来有运动，如何安排训练前后补给",
+          "remainingDayPlan": "今天剩余饮食和活动安排",
+          "caution": "需要注意的风险或数据不足"
+        }
+        """
+
+        let content = try await complete(
+            model: settings.modelName,
+            baseURL: settings.baseURL,
+            apiKeychainKey: settings.apiKeychainKey,
+            messages: [
+                ChatMessage(role: "system", content: .text(systemPrompt)),
+                ChatMessage(role: "user", content: .text(snapshotJSON))
+            ],
+            temperature: 0.4,
+            jsonMode: true,
+            maxTokens: 2000
+        )
+
+        return try AIResponseParser.decodeJSONObject(DietCoachAdvice.self, from: content)
     }
 
     func testConnection(settings: AISettings) async throws -> String {
