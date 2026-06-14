@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UserNotifications
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -25,13 +26,21 @@ struct SettingsView: View {
     @State private var visionBaseURL = "https://api.xiaomimimo.com/v1"
     @State private var visionModelName = "mimo-v2-omni"
     @State private var visionAPIKey = ""
+    @State private var showTextKey = false
+    @State private var showVisionKey = false
+    @State private var textKeyConfigured = false
+    @State private var visionKeyConfigured = false
+    @State private var notificationStatusText = "未知"
     @State private var exportStart = Calendar.current.date(byAdding: .month, value: -1, to: .now) ?? .now
     @State private var exportEnd = Date.now
     @State private var shareURLs: [URL] = []
     @State private var showingShare = false
     @State private var isTestingAI = false
     @State private var message: String?
+    @State private var messageIsError = false
     @State private var debugLog: String = ""
+
+    private var exportRangeValid: Bool { exportStart <= exportEnd }
 
     var body: some View {
         NavigationStack {
@@ -56,39 +65,61 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    TextField("文字 Base URL", text: $baseURL)
+                    TextField("Base URL", text: $baseURL)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
-                    TextField("文字模型", text: $modelName)
+                    TextField("模型名", text: $modelName)
                         .textInputAutocapitalization(.never)
-                    SecureField("文字 API Key（留空则不修改）", text: $apiKey)
-                        .textInputAutocapitalization(.never)
+                    apiKeyField(text: $apiKey, show: $showTextKey, configured: textKeyConfigured)
+                } header: {
+                    Text("文字模型 · DeepSeek")
+                } footer: {
+                    Text("用于文字估算和每日建议。默认 https://api.deepseek.com，模型 deepseek-v4-pro。")
+                }
 
-                    TextField("视觉 Base URL", text: $visionBaseURL)
+                Section {
+                    TextField("Base URL", text: $visionBaseURL)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
-                    TextField("视觉模型", text: $visionModelName)
+                    TextField("模型名", text: $visionModelName)
                         .textInputAutocapitalization(.never)
-                    SecureField("视觉 API Key（留空则不修改）", text: $visionAPIKey)
-                        .textInputAutocapitalization(.never)
+                    apiKeyField(text: $visionAPIKey, show: $showVisionKey, configured: visionKeyConfigured)
+                } header: {
+                    Text("视觉模型 · 小米 MiMo")
+                } footer: {
+                    Text("用于拍照/多图识别，与文字模型分属不同服务商，需独立的 Base URL 和 Key。默认 https://api.xiaomimimo.com/v1，模型 mimo-v2-omni。")
+                }
 
+                Section("连接诊断") {
                     Button {
                         Task { await testAIConnection() }
                     } label: {
-                        Label(isTestingAI ? "测试中" : "测试 AI 模型", systemImage: "bolt.horizontal.circle")
+                        if isTestingAI {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text("测试中…")
+                            }
+                        } else {
+                            Label("测试 AI 连接（文字 + 视觉）", systemImage: "bolt.horizontal.circle")
+                        }
                     }
                     .disabled(isTestingAI)
-                } header: {
-                    Text("AI 接口")
-                } footer: {
-                    Text("文字模型默认 DeepSeek（https://api.deepseek.com，deepseek-v4-pro），用于文字估算和每日建议。视觉模型默认小米 MiMo（https://api.xiaomimimo.com/v1，mimo-v2-omni），用于拍照/多图识别。两者是不同服务商，需分别填各自的 API Key。")
                 }
 
                 if !debugLog.isEmpty {
                     Section {
-                        Text(debugLog)
-                            .font(.system(.footnote, design: .monospaced))
-                            .textSelection(.enabled)
+                        ScrollView {
+                            Text(debugLog)
+                                .font(.system(.footnote, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 260)
+                        Button(role: .destructive) {
+                            debugLog = ""
+                        } label: {
+                            Label("清空日志", systemImage: "trash")
+                        }
                     } header: {
                         Text("调试日志")
                     } footer: {
@@ -97,12 +128,13 @@ struct SettingsView: View {
                 }
 
                 Section("权限") {
+                    LabeledContent("HealthKit", value: healthKitService.authorizationStatusDescription)
                     Button {
                         Task { await requestHealthKit() }
                     } label: {
                         Label("请求健康权限", systemImage: "heart.text.square")
                     }
-
+                    LabeledContent("通知", value: notificationStatusText)
                     Button {
                         Task { await scheduleReminder() }
                     } label: {
@@ -118,12 +150,18 @@ struct SettingsView: View {
                     } label: {
                         Label("导出表格", systemImage: "square.and.arrow.up")
                     }
+                    .disabled(!exportRangeValid)
+                    if !exportRangeValid {
+                        Text("开始日期不能晚于结束日期。")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
 
                 if let message {
                     Section {
-                        Text(message)
-                            .foregroundStyle(.secondary)
+                        Label(message, systemImage: messageIsError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                            .foregroundStyle(messageIsError ? .red : .green)
                     }
                 }
             }
@@ -134,9 +172,39 @@ struct SettingsView: View {
                 }
             }
             .onAppear(perform: load)
+            .task { await refreshNotificationStatus() }
             .sheet(isPresented: $showingShare) {
                 ActivityView(items: shareURLs.map { $0 as Any })
             }
+        }
+    }
+
+    /// API Key 输入行：明文/密文切换 + 已配置标识。
+    @ViewBuilder
+    private func apiKeyField(text: Binding<String>, show: Binding<Bool>, configured: Bool) -> some View {
+        HStack {
+            Group {
+                if show.wrappedValue {
+                    TextField("API Key（留空则不修改）", text: text)
+                } else {
+                    SecureField("API Key（留空则不修改）", text: text)
+                }
+            }
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+
+            if configured {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(.green)
+                    .accessibilityLabel("已配置")
+            }
+            Button {
+                show.wrappedValue.toggle()
+            } label: {
+                Image(systemName: show.wrappedValue ? "eye.slash" : "eye")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -152,6 +220,7 @@ struct SettingsView: View {
         modelName = aiSettings.modelName
         visionBaseURL = aiSettings.visionBaseURL
         visionModelName = aiSettings.visionModelName
+        refreshKeyStatus()
     }
 
     private func save() {
@@ -183,9 +252,10 @@ struct SettingsView: View {
                 visionAPIKey = ""
             }
             try modelContext.save()
-            message = "已保存"
+            refreshKeyStatus()
+            setMessage("已保存", isError: false)
         } catch {
-            message = error.localizedDescription
+            setMessage(error.localizedDescription, isError: true)
         }
     }
 
@@ -234,6 +304,7 @@ struct SettingsView: View {
         } catch {
             appendLog("⚠️ 保存设置失败：\(error.localizedDescription)")
         }
+        refreshKeyStatus()
 
         await aiClient.diagnose(settings: aiSettings) { line in
             appendLog(line)
@@ -250,9 +321,9 @@ struct SettingsView: View {
     private func requestHealthKit() async {
         do {
             try await healthKitService.requestAuthorization()
-            message = "已请求健康权限"
+            setMessage("已请求健康权限", isError: false)
         } catch {
-            message = error.localizedDescription
+            setMessage(error.localizedDescription, isError: true)
         }
     }
 
@@ -262,13 +333,15 @@ struct SettingsView: View {
         do {
             try await notificationScheduler.requestAuthorization()
             try await notificationScheduler.scheduleNightlyReminder(profile: profile)
-            message = "已更新晚间提醒"
+            await refreshNotificationStatus()
+            setMessage("已更新晚间提醒", isError: false)
         } catch {
-            message = error.localizedDescription
+            setMessage(error.localizedDescription, isError: true)
         }
     }
 
     private func exportCSV() {
+        guard exportRangeValid else { return }
         let start = Calendar.current.startOfDay(for: exportStart)
         let interval = Calendar.current.dayInterval(containing: exportEnd)
         let end = interval.end
@@ -279,9 +352,42 @@ struct SettingsView: View {
         do {
             shareURLs = try CSVExporter.export(meals: mealsInRange, exercises: exercisesInRange, summaries: summariesInRange)
             showingShare = true
-            message = "已生成 CSV"
+            setMessage("已生成 CSV", isError: false)
         } catch {
-            message = error.localizedDescription
+            setMessage(error.localizedDescription, isError: true)
+        }
+    }
+
+    private func setMessage(_ text: String, isError: Bool) {
+        message = text
+        messageIsError = isError
+    }
+
+    private func refreshKeyStatus() {
+        guard let aiSettings = settings.first else { return }
+        textKeyConfigured = keyConfigured(aiSettings.apiKeychainKey)
+        visionKeyConfigured = keyConfigured(aiSettings.visionAPIKeychainKey)
+    }
+
+    private func keyConfigured(_ key: String) -> Bool {
+        guard let value = (try? KeychainStore.shared.read(key)) ?? nil else { return false }
+        return !value.isEmpty
+    }
+
+    @MainActor
+    private func refreshNotificationStatus() async {
+        let notificationSettings = await UNUserNotificationCenter.current().notificationSettings()
+        notificationStatusText = Self.describe(notificationSettings.authorizationStatus)
+    }
+
+    private static func describe(_ status: UNAuthorizationStatus) -> String {
+        switch status {
+        case .authorized: "已授权"
+        case .denied: "已拒绝"
+        case .notDetermined: "未询问"
+        case .provisional: "临时授权"
+        case .ephemeral: "临时授权"
+        @unknown default: "未知"
         }
     }
 }

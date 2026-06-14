@@ -18,13 +18,38 @@ struct OnboardingView: View {
     @State private var visionBaseURL = "https://api.xiaomimimo.com/v1"
     @State private var visionModelName = "mimo-v2-omni"
     @State private var visionAPIKey = ""
+    @State private var showTextKey = false
+    @State private var showVisionKey = false
     @State private var isSaving = false
     @State private var errorMessage: String?
+
+    private var genderUnspecified: Bool { gender == .unspecified }
+    private var apiKeyMissing: Bool {
+        apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || visionAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("身体资料") {
+                Section {
+                    VStack(spacing: 8) {
+                        Image(systemName: "figure.run.circle.fill")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.tint)
+                        Text("欢迎使用健身助手")
+                            .font(.title3.weight(.semibold))
+                        Text("记录每日饮食和运动，自动同步 Apple 健康，AI 帮你分析热量缺口并生成减脂建议。")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .listRowBackground(Color.clear)
+                }
+
+                Section {
                     Stepper(value: $heightCm, in: 120...230, step: 1) {
                         LabeledContent("身高", value: "\(Int(heightCm)) cm")
                     }
@@ -37,36 +62,62 @@ struct OnboardingView: View {
                         }
                     }
                     DatePicker("生日", selection: $birthday, displayedComponents: .date)
+                } header: {
+                    Text("身体资料")
+                } footer: {
+                    if genderUnspecified {
+                        Text("建议选择性别，否则基础代谢（BMR）估算会不准确。")
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text("用于计算基础代谢率，估算每日热量消耗。")
+                    }
                 }
 
-                Section("减脂目标") {
+                Section {
                     Stepper(value: $targetDeficit, in: 100...1000, step: 50) {
                         LabeledContent("每日热量缺口", value: "\(Int(targetDeficit)) kcal")
                     }
                     DatePicker("晚间提醒", selection: $reminderTime, displayedComponents: .hourAndMinute)
+                } header: {
+                    Text("减脂目标")
+                } footer: {
+                    Text("热量缺口越大减脂越快，但过大不易坚持，推荐 300–500 kcal。每晚此时提醒你记录当天数据。")
                 }
 
-                Section("AI 接口") {
-                    TextField("文字 Base URL", text: $baseURL)
+                Section {
+                    TextField("Base URL", text: $baseURL)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
-                    TextField("文字模型", text: $modelName)
+                    TextField("模型名", text: $modelName)
                         .textInputAutocapitalization(.never)
-                    SecureField("文字 API Key", text: $apiKey)
-                        .textInputAutocapitalization(.never)
+                    apiKeyField(text: $apiKey, show: $showTextKey)
+                } header: {
+                    Text("文字模型 · DeepSeek")
+                } footer: {
+                    Text("用于文字估算和每日建议。默认已填好 DeepSeek，有自己的 OpenAI 兼容服务可改。")
+                }
 
-                    TextField("视觉 Base URL", text: $visionBaseURL)
+                Section {
+                    TextField("Base URL", text: $visionBaseURL)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
-                    TextField("视觉模型", text: $visionModelName)
+                    TextField("模型名", text: $visionModelName)
                         .textInputAutocapitalization(.never)
-                    SecureField("视觉 API Key", text: $visionAPIKey)
-                        .textInputAutocapitalization(.never)
+                    apiKeyField(text: $visionAPIKey, show: $showVisionKey)
+                } header: {
+                    Text("视觉模型 · 小米 MiMo")
+                } footer: {
+                    if apiKeyMissing {
+                        Text("用于拍照/多图识别。两套模型可填同一个 Key 也可不同；留空仍可使用，但 AI 估算和建议功能需要对应的 API Key。")
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text("用于拍照/多图识别，与文字模型分属不同服务商，各填各自的 Key。")
+                    }
                 }
 
                 if let errorMessage {
                     Section {
-                        Text(errorMessage)
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.red)
                     }
                 }
@@ -74,12 +125,42 @@ struct OnboardingView: View {
             .navigationTitle("健身助手")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "保存中" : "开始使用") {
+                    Button {
                         Task { await save() }
+                    } label: {
+                        if isSaving {
+                            ProgressView()
+                        } else {
+                            Text("开始使用")
+                        }
                     }
                     .disabled(isSaving)
                 }
             }
+        }
+    }
+
+    /// API Key 输入行：明文/密文切换。
+    @ViewBuilder
+    private func apiKeyField(text: Binding<String>, show: Binding<Bool>) -> some View {
+        HStack {
+            Group {
+                if show.wrappedValue {
+                    TextField("API Key", text: text)
+                } else {
+                    SecureField("API Key", text: text)
+                }
+            }
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+
+            Button {
+                show.wrappedValue.toggle()
+            } label: {
+                Image(systemName: show.wrappedValue ? "eye.slash" : "eye")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
         }
     }
 

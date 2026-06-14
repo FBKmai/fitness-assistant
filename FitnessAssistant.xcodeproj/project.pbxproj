@@ -31,6 +31,7 @@
 		FA2000000000000000000016 /* SummariesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000016 /* SummariesView.swift */; };
 		FA2000000000000000000017 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000017 /* SettingsView.swift */; };
 		FA2000000000000000000018 /* SystemPickers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000018 /* SystemPickers.swift */; };
+		FA2000000000000000000020 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000024 /* DesignSystem.swift */; };
 		FA2000000000000000000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000001C /* Assets.xcassets */; };
 		FA200000000000000000001A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000001B /* PrivacyInfo.xcprivacy */; };
 		FA200000000000000000001B /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA100000000000000000001D /* HealthKit.framework */; };
@@ -75,6 +76,7 @@
 		FA1000000000000000000016 /* SummariesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummariesView.swift; sourceTree = "<group>"; };
 		FA1000000000000000000017 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		FA1000000000000000000018 /* SystemPickers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemPickers.swift; sourceTree = "<group>"; };
+		FA1000000000000000000024 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		FA1000000000000000000019 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		FA100000000000000000001A /* FitnessAssistant.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FitnessAssistant.entitlements; sourceTree = "<group>"; };
 		FA100000000000000000001B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -196,6 +198,7 @@
 				FA1000000000000000000016 /* SummariesView.swift */,
 				FA1000000000000000000017 /* SettingsView.swift */,
 				FA1000000000000000000018 /* SystemPickers.swift */,
+				FA1000000000000000000024 /* DesignSystem.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -351,6 +354,7 @@
 				FA2000000000000000000016 /* SummariesView.swift in Sources */,
 				FA2000000000000000000017 /* SettingsView.swift in Sources */,
 				FA2000000000000000000018 /* SystemPickers.swift in Sources */,
+				FA2000000000000000000020 /* DesignSystem.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

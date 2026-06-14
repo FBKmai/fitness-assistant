@@ -15,6 +15,9 @@ struct TodayView: View {
     @State private var isWorking = false
     @State private var statusMessage = "打开后可同步健康数据并生成今日建议"
 
+    /// 由 MainTabView 注入，用于空态快捷按钮切换到「饮食」「运动」Tab。
+    var selection: Binding<Int>? = nil
+
     private var profile: UserProfile? { profiles.first }
     private var aiSettings: AISettings? { settings.first }
     private var todayMeals: [MealEntry] { meals.filter { Calendar.current.isDateInToday($0.date) } }
@@ -31,20 +34,54 @@ struct TodayView: View {
             .reduce(0) { $0 + $1.activeCalories }
     }
 
+    private var deficit: Double { todaySummary?.calorieDeficit ?? 0 }
+    private var deficitTarget: Double { profile?.targetDailyDeficitKcal ?? 0 }
+    private var deficitReached: Bool { deficitTarget > 0 && deficit >= deficitTarget }
+    private var deficitTint: Color { deficitReached ? .deficitReached : .deficitShort }
+    private var hasTodayRecords: Bool { !todayMeals.isEmpty || !todayExercises.isEmpty }
+
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    HStack(spacing: 12) {
-                        MetricTile(title: "摄入", value: intakeCalories.kcalText, systemImage: "fork.knife")
-                        MetricTile(title: "热量差", value: (todaySummary?.calorieDeficit ?? 0).signedKcalText, systemImage: "plusminus")
+                    HStack(spacing: AppMetrics.tileSpacing) {
+                        MetricTile(title: "摄入", value: intakeCalories.kcalValue, systemImage: "fork.knife")
+                        MetricTile(title: "热量差", value: deficit.signedKcalValue, systemImage: "plusminus", highlighted: true, tint: deficitTint)
                     }
-                    HStack(spacing: 12) {
-                        MetricTile(title: "活动", value: (todaySummary?.activeCalories ?? manualActiveCalories).kcalText, systemImage: "flame")
-                        MetricTile(title: "基础", value: (todaySummary?.restingCalories ?? profile.map { CalorieCalculator.bmr(profile: $0) } ?? 0).kcalText, systemImage: "bed.double")
+                    HStack(spacing: AppMetrics.tileSpacing) {
+                        MetricTile(title: "活动", value: (todaySummary?.activeCalories ?? manualActiveCalories).kcalValue, systemImage: "flame")
+                        MetricTile(title: "基础", value: (todaySummary?.restingCalories ?? profile.map { CalorieCalculator.bmr(profile: $0) } ?? 0).kcalValue, systemImage: "bed.double")
+                    }
+                    if deficitTarget > 0 {
+                        MetricProgressBar(title: "距每日缺口目标 \(Int(deficitTarget)) kcal", current: deficit, target: deficitTarget, tint: deficitTint)
+                            .padding(.top, 6)
                     }
                 }
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowBackground(Color.clear)
+
+                if !hasTodayRecords {
+                    Section {
+                        ContentUnavailableView {
+                            Label("今天还没有记录", systemImage: "square.and.pencil")
+                        } description: {
+                            Text("记录今天的饮食和运动，获取专属的热量分析与明日建议。")
+                        } actions: {
+                            Button {
+                                selection?.wrappedValue = 1
+                            } label: {
+                                Label("记录饮食", systemImage: "fork.knife")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button {
+                                selection?.wrappedValue = 2
+                            } label: {
+                                Label("记录运动", systemImage: "figure.run")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
 
                 Section("今日状态") {
                     LabeledContent("HealthKit", value: healthKitService.authorizationStatusDescription)
@@ -69,13 +106,18 @@ struct TodayView: View {
                     Button {
                         Task { await syncAndGenerateSummary() }
                     } label: {
-                        Label(isWorking ? "处理中" : "同步并生成今日建议", systemImage: "arrow.triangle.2.circlepath")
+                        if isWorking {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text("处理中…")
+                            }
+                        } else {
+                            Label("同步并生成今日建议", systemImage: "arrow.triangle.2.circlepath")
+                        }
                     }
                     .disabled(isWorking)
-
+                } footer: {
                     Text(statusMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("今日")
@@ -243,34 +285,5 @@ struct TodayView: View {
 
         AI 建议暂未生成：\(error.localizedDescription)
         """
-    }
-}
-
-private struct MetricTile: View {
-    var title: String
-    var value: String
-    var systemImage: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: systemImage)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title3.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-extension Double {
-    var kcalText: String { "\(Int(rounded())) kcal" }
-    var signedKcalText: String {
-        let roundedValue = Int(rounded())
-        return roundedValue >= 0 ? "+\(roundedValue) kcal" : "\(roundedValue) kcal"
     }
 }

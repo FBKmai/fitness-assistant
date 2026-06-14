@@ -15,22 +15,29 @@ struct RootView: View {
 }
 
 struct MainTabView: View {
+    @State private var selection = 0
+
     var body: some View {
-        TabView {
-            TodayView()
+        TabView(selection: $selection) {
+            TodayView(selection: $selection)
                 .tabItem { Label("今日", systemImage: "gauge.with.dots.needle.67percent") }
+                .tag(0)
 
             MealsView()
                 .tabItem { Label("饮食", systemImage: "fork.knife") }
+                .tag(1)
 
             ExerciseView()
                 .tabItem { Label("运动", systemImage: "figure.run") }
+                .tag(2)
 
             SummariesView()
                 .tabItem { Label("总结", systemImage: "doc.text.magnifyingglass") }
+                .tag(3)
 
             SettingsView()
                 .tabItem { Label("设置", systemImage: "gearshape") }
+                .tag(4)
         }
     }
 }
