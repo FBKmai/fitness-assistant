@@ -7,7 +7,7 @@ struct OnboardingView: View {
     @EnvironmentObject private var notificationScheduler: NotificationScheduler
 
     @State private var heightCm = 170.0
-    @State private var weightKg = 70.0
+    @State private var weightText = "70.0"
     @State private var gender: Gender = .unspecified
     @State private var birthday = Calendar.current.date(byAdding: .year, value: -30, to: .now) ?? .now
     @State private var targetDeficit = 500.0
@@ -27,6 +27,11 @@ struct OnboardingView: View {
     private var apiKeyMissing: Bool {
         apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || visionAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    private var parsedWeightKg: Double? { weightText.doubleValue }
+    private var weightValid: Bool {
+        guard let parsedWeightKg else { return false }
+        return (30...250).contains(parsedWeightKg)
     }
 
     var body: some View {
@@ -53,8 +58,11 @@ struct OnboardingView: View {
                     Stepper(value: $heightCm, in: 120...230, step: 1) {
                         LabeledContent("身高", value: "\(Int(heightCm)) cm")
                     }
-                    Stepper(value: $weightKg, in: 30...200, step: 0.5) {
-                        LabeledContent("体重", value: String(format: "%.1f kg", weightKg))
+                    HStack {
+                        TextField("体重", text: $weightText)
+                            .keyboardType(.decimalPad)
+                        Text("kg")
+                            .foregroundStyle(.secondary)
                     }
                     Picker("性别", selection: $gender) {
                         ForEach(Gender.allCases) { value in
@@ -65,7 +73,10 @@ struct OnboardingView: View {
                 } header: {
                     Text("身体资料")
                 } footer: {
-                    if genderUnspecified {
+                    if !weightValid {
+                        Text("请输入 30-250 kg 之间的体重。")
+                            .foregroundStyle(.orange)
+                    } else if genderUnspecified {
                         Text("建议选择性别，否则基础代谢（BMR）估算会不准确。")
                             .foregroundStyle(.orange)
                     } else {
@@ -134,7 +145,7 @@ struct OnboardingView: View {
                             Text("开始使用")
                         }
                     }
-                    .disabled(isSaving)
+                    .disabled(isSaving || !weightValid)
                 }
             }
         }
@@ -169,11 +180,15 @@ struct OnboardingView: View {
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
+        guard let parsedWeightKg, weightValid else {
+            errorMessage = "请输入有效体重"
+            return
+        }
 
         let components = Calendar.current.dateComponents([.hour, .minute], from: reminderTime)
         let profile = UserProfile(
             heightCm: heightCm,
-            currentWeightKg: weightKg,
+            currentWeightKg: parsedWeightKg,
             gender: gender,
             birthday: birthday,
             goal: .fatLoss,

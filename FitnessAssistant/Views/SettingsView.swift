@@ -15,7 +15,7 @@ struct SettingsView: View {
     @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
 
     @State private var heightCm = 170.0
-    @State private var weightKg = 70.0
+    @State private var weightText = "70.0"
     @State private var gender: Gender = .unspecified
     @State private var birthday = Date.now
     @State private var targetDeficit = 500.0
@@ -41,6 +41,11 @@ struct SettingsView: View {
     @State private var debugLog: String = ""
 
     private var exportRangeValid: Bool { exportStart <= exportEnd }
+    private var parsedWeightKg: Double? { weightText.doubleValue }
+    private var weightValid: Bool {
+        guard let parsedWeightKg else { return false }
+        return (30...250).contains(parsedWeightKg)
+    }
 
     var body: some View {
         NavigationStack {
@@ -49,8 +54,11 @@ struct SettingsView: View {
                     Stepper(value: $heightCm, in: 120...230, step: 1) {
                         LabeledContent("身高", value: "\(Int(heightCm)) cm")
                     }
-                    Stepper(value: $weightKg, in: 30...200, step: 0.5) {
-                        LabeledContent("体重", value: String(format: "%.1f kg", weightKg))
+                    HStack {
+                        TextField("体重", text: $weightText)
+                            .keyboardType(.decimalPad)
+                        Text("kg")
+                            .foregroundStyle(.secondary)
                     }
                     Picker("性别", selection: $gender) {
                         ForEach(Gender.allCases) { value in
@@ -62,6 +70,11 @@ struct SettingsView: View {
                         LabeledContent("热量缺口目标", value: "\(Int(targetDeficit)) kcal")
                     }
                     DatePicker("晚间提醒", selection: $reminderTime, displayedComponents: .hourAndMinute)
+                    if !weightValid {
+                        Text("请输入 30-250 kg 之间的体重。")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
 
                 Section {
@@ -169,6 +182,7 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") { save() }
+                        .disabled(!weightValid)
                 }
             }
             .onAppear(perform: load)
@@ -211,7 +225,7 @@ struct SettingsView: View {
     private func load() {
         guard let profile = profiles.first, let aiSettings = settings.first else { return }
         heightCm = profile.heightCm
-        weightKg = profile.currentWeightKg
+        weightText = String(format: "%.1f", profile.currentWeightKg)
         gender = profile.gender
         birthday = profile.birthday
         targetDeficit = profile.targetDailyDeficitKcal
@@ -225,10 +239,14 @@ struct SettingsView: View {
 
     private func save() {
         guard let profile = profiles.first, let aiSettings = settings.first else { return }
+        guard let parsedWeightKg, weightValid else {
+            setMessage("请输入有效体重", isError: true)
+            return
+        }
         let components = Calendar.current.dateComponents([.hour, .minute], from: reminderTime)
 
         profile.heightCm = heightCm
-        profile.currentWeightKg = weightKg
+        profile.currentWeightKg = parsedWeightKg
         profile.gender = gender
         profile.birthday = birthday
         profile.targetDailyDeficitKcal = targetDeficit

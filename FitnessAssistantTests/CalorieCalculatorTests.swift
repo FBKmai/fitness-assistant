@@ -19,8 +19,10 @@ final class CalorieCalculatorTests: XCTestCase {
         XCTAssertEqual(result.totalBurnCalories - result.intakeCalories, result.calorieDeficit, accuracy: 0.1)
     }
 
-    func testHealthKitRestingEnergyWinsOverBMR() {
-        let profile = UserProfile(heightCm: 170, currentWeightKg: 70, gender: .unspecified)
+    func testBMRWinsOverPartialHealthKitRestingEnergy() {
+        let birthday = Calendar.current.date(byAdding: .year, value: -30, to: .now)!
+        let profile = UserProfile(heightCm: 170, currentWeightKg: 70, gender: .unspecified, birthday: birthday)
+        let expectedBMR = CalorieCalculator.bmr(profile: profile)
 
         let result = CalorieCalculator.compute(
             intakeCalories: 2000,
@@ -30,9 +32,9 @@ final class CalorieCalculatorTests: XCTestCase {
             profile: profile
         )
 
-        XCTAssertEqual(result.restingCalories, 1500, accuracy: 0.1)
-        XCTAssertEqual(result.totalBurnCalories, 1800, accuracy: 0.1)
-        XCTAssertEqual(result.calorieDeficit, -200, accuracy: 0.1)
+        XCTAssertEqual(result.restingCalories, expectedBMR, accuracy: 0.1)
+        XCTAssertEqual(result.totalBurnCalories, expectedBMR + 300, accuracy: 0.1)
+        XCTAssertEqual(result.calorieDeficit, expectedBMR + 300 - 2000, accuracy: 0.1)
     }
 
     func testFatLossAnalyzerFlagsLowIntakeAndProtein() {

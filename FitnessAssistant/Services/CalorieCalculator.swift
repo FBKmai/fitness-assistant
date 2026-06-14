@@ -51,7 +51,10 @@ enum CalorieCalculator {
         profile: UserProfile
     ) -> DailyEnergyComputation {
         let activeCalories = max(0, healthKitActiveCalories) + max(0, manualActiveCalories)
-        let restingCalories = max(0, healthKitRestingCalories ?? bmr(profile: profile))
+        // HealthKit's basal energy for the current day is often only the amount accumulated so far.
+        // For the daily deficit target, use a stable full-day BMR estimate instead.
+        _ = healthKitRestingCalories
+        let restingCalories = max(0, bmr(profile: profile))
         let totalBurn = restingCalories + activeCalories
         let deficit = totalBurn - max(0, intakeCalories)
 

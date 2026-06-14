@@ -106,11 +106,15 @@ final class AIClient: ObservableObject {
         2. 结合三大营养素点评蛋白质、碳水、脂肪是否合理（减脂期重点关注蛋白质是否充足）；
         3. 结合 recentDays 趋势说明最近进展（热量缺口是否稳定、体重变化方向）；若数据不足则说明无法判断趋势。
         4. 优先尊重 analysis 的风险和数据质量判断，不要建议极端节食或用过量运动弥补饮食。
+        5. 热量差公式是：基础代谢 bmr + 活动消耗 activeCalories - 摄入 intakeCalories；targetDailyDeficitKcal 只用于判断是否达标，不参与热量差计算。
+        6. todayMealAdvice 要包含今天剩余早餐/午餐/晚餐安排建议，snackAdvice 要单独给零嘴建议。
         目标是减脂，建议要现实、可执行、个性化，不提供医疗诊断。
         只返回 JSON，不要使用 markdown。
         JSON 格式：
         {
           "summary": "当天情况总结",
+          "todayMealAdvice": "今天剩余三餐或下一餐怎么安排",
+          "snackAdvice": "今天零嘴或加餐建议",
           "tomorrowDietAdvice": "第二天饮食建议",
           "tomorrowExerciseAdvice": "第二天运动建议",
           "recoveryAdvice": "恢复和注意事项"

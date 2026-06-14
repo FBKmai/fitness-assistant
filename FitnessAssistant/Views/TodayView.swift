@@ -15,6 +15,7 @@ struct TodayView: View {
     @State private var isWorking = false
     @State private var statusMessage = "打开后可同步健康数据并生成今日建议"
     @State private var showingDietCoach = false
+    @State private var todayWeightText = ""
 
     /// 由 MainTabView 注入，用于空态快捷按钮切换到「饮食」「运动」Tab。
     var selection: Binding<Int>? = nil
@@ -22,11 +23,12 @@ struct TodayView: View {
     private var profile: UserProfile? { profiles.first }
     private var aiSettings: AISettings? { settings.first }
     private var todayMeals: [MealEntry] { meals.filter { Calendar.current.isDateInToday($0.date) } }
+    private var confirmedMeals: [MealEntry] { todayMeals.filter(\.isConfirmed) }
     private var todayExercises: [ExerciseEntry] { exercises.filter { Calendar.current.isDateInToday($0.date) } }
     private var todaySummary: DailySummary? { summaries.first { Calendar.current.isDateInToday($0.date) } }
 
     private var intakeCalories: Double {
-        todayMeals.filter(\.isConfirmed).reduce(0) { $0 + $1.totalCalories }
+        confirmedMeals.reduce(0) { $0 + $1.totalCalories }
     }
 
     private var manualActiveCalories: Double {
@@ -35,11 +37,28 @@ struct TodayView: View {
             .reduce(0) { $0 + $1.activeCalories }
     }
 
-    private var deficit: Double { todaySummary?.calorieDeficit ?? 0 }
+    private var healthKitAggregateActiveCalories: Double {
+        todayExercises.first {
+            $0.source == .healthKit && ($0.healthKitWorkoutID?.hasPrefix("daily-") ?? false)
+        }?.activeCalories ?? 0
+    }
+
+    private var liveActiveCalories: Double {
+        todaySummary?.activeCalories ?? (healthKitAggregateActiveCalories + manualActiveCalories)
+    }
+
+    private var restingCalories: Double { profile.map { CalorieCalculator.bmr(profile: $0) } ?? 0 }
+    private var deficit: Double { restingCalories + liveActiveCalories - intakeCalories }
     private var deficitTarget: Double { profile?.targetDailyDeficitKcal ?? 0 }
     private var deficitReached: Bool { deficitTarget > 0 && deficit >= deficitTarget }
     private var deficitTint: Color { deficitReached ? .deficitReached : .deficitShort }
     private var hasTodayRecords: Bool { !todayMeals.isEmpty || !todayExercises.isEmpty }
+    private var todayWeightValue: Double? { todayWeightText.doubleValue }
+    private var todayMealSignature: String {
+        confirmedMeals
+            .map { "\($0.id.uuidString):\($0.updatedAt.timeIntervalSince1970):\($0.totalCalories):\($0.proteinGrams):\($0.carbsGrams):\($0.fatGrams)" }
+            .joined(separator: "|")
+    }
 
     var body: some View {
         NavigationStack {
@@ -50,8 +69,8 @@ struct TodayView: View {
                         MetricTile(title: "热量差", value: deficit.signedKcalValue, systemImage: "plusminus", highlighted: true, tint: deficitTint)
                     }
                     HStack(spacing: AppMetrics.tileSpacing) {
-                        MetricTile(title: "活动", value: (todaySummary?.activeCalories ?? manualActiveCalories).kcalValue, systemImage: "flame")
-                        MetricTile(title: "基础", value: (todaySummary?.restingCalories ?? profile.map { CalorieCalculator.bmr(profile: $0) } ?? 0).kcalValue, systemImage: "bed.double")
+                        MetricTile(title: "活动", value: liveActiveCalories.kcalValue, systemImage: "flame")
+                        MetricTile(title: "基础", value: restingCalories.kcalValue, systemImage: "bed.double")
                     }
                     if deficitTarget > 0 {
                         MetricProgressBar(title: "距每日缺口目标 \(Int(deficitTarget)) kcal", current: deficit, target: deficitTarget, tint: deficitTint)
@@ -60,6 +79,23 @@ struct TodayView: View {
                 }
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 .listRowBackground(Color.clear)
+
+                Section("今日体重") {
+                    HStack {
+                        TextField("体重 kg", text: $todayWeightText)
+                            .keyboardType(.decimalPad)
+                        Text("kg")
+                            .foregroundStyle(.secondary)
+                    }
+                    Button {
+                        saveTodayWeight()
+                    } label: {
+                        Label("保存今日体重", systemImage: "scalemass")
+                    }
+                    .disabled(!isValidWeight(todayWeightValue))
+                } footer: {
+                    Text("体重由你每天手动填写，不再从 Apple 健康读取；保存后会更新基础代谢和今日判断。")
+                }
 
                 if !hasTodayRecords {
                     Section {
@@ -110,11 +146,15 @@ struct TodayView: View {
                     Text("结合今天记录、近 7 天趋势和你的即时问题，给出这一餐及后续安排建议。")
                 }
 
-                if let advice = todaySummary?.adviceText, !advice.isEmpty {
-                    Section("今日总结与明日建议") {
-                        Text(advice)
-                            .font(.body)
-                            .textSelection(.enabled)
+                if let mealReply = buildMealReply() {
+                    Section("今日饮食回复") {
+                        Text(mealReply.overall)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        MealAdviceRow(title: "早餐", text: mealReply.breakfast)
+                        MealAdviceRow(title: "午餐", text: mealReply.lunch)
+                        MealAdviceRow(title: "晚餐", text: mealReply.dinner)
+                        MealAdviceRow(title: "零嘴", text: mealReply.snack)
                     }
                 }
 
@@ -135,12 +175,27 @@ struct TodayView: View {
                 } footer: {
                     Text(statusMessage)
                 }
+
+                if let advice = todaySummary?.adviceText, !advice.isEmpty {
+                    Section("今日总结与明日建议") {
+                        Text(advice)
+                            .font(.body)
+                            .textSelection(.enabled)
+                    }
+                }
             }
             .navigationTitle("今日")
+            .onAppear {
+                refreshTodayWeightText()
+            }
             .task {
                 if todaySummary == nil {
                     await syncAndGenerateSummary(silent: true)
                 }
+            }
+            .onChange(of: todayMealSignature) { _, newValue in
+                guard !newValue.isEmpty else { return }
+                Task { await syncAndGenerateSummary(silent: true) }
             }
             .sheet(isPresented: $showingDietCoach) {
                 if let profile, let aiSettings {
@@ -154,6 +209,93 @@ struct TodayView: View {
                 }
             }
         }
+    }
+
+    private func refreshTodayWeightText() {
+        guard todayWeightText.isEmpty, let profile else { return }
+        todayWeightText = String(format: "%.1f", profile.currentWeightKg)
+    }
+
+    private func isValidWeight(_ value: Double?) -> Bool {
+        guard let value else { return false }
+        return (30...250).contains(value)
+    }
+
+    private func saveTodayWeight() {
+        guard let profile, let weight = todayWeightValue, isValidWeight(weight) else { return }
+        profile.currentWeightKg = weight
+        profile.updatedAt = .now
+
+        if let todaySummary {
+            todaySummary.weightKg = weight
+        }
+
+        do {
+            try modelContext.save()
+            statusMessage = "今日体重已保存，正在刷新建议..."
+            Task { await syncAndGenerateSummary(silent: true) }
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    private func buildMealReply() -> MealReply? {
+        guard let profile, !confirmedMeals.isEmpty else { return nil }
+
+        let protein = confirmedMeals.reduce(0) { $0 + $1.proteinGrams }
+        let carbs = confirmedMeals.reduce(0) { $0 + $1.carbsGrams }
+        let fat = confirmedMeals.reduce(0) { $0 + $1.fatGrams }
+        var snapshot = DailySnapshot(
+            date: .now,
+            goal: profile.goal.title,
+            targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
+            heightCm: profile.heightCm,
+            weightKg: profile.currentWeightKg,
+            gender: profile.gender.title,
+            age: profile.age,
+            bmr: restingCalories,
+            intakeCalories: intakeCalories,
+            activeCalories: liveActiveCalories,
+            restingCalories: restingCalories,
+            totalBurnCalories: restingCalories + liveActiveCalories,
+            calorieDeficit: deficit,
+            proteinGrams: protein,
+            carbsGrams: carbs,
+            fatGrams: fat,
+            averageMealConfidence: nil,
+            unconfirmedMealCount: todayMeals.filter { !$0.isConfirmed }.count,
+            manualActiveCalories: manualActiveCalories,
+            meals: confirmedMeals.map(\.textDescription),
+            workouts: todayExercises.map(\.workoutType),
+            recentDays: [],
+            analysis: nil
+        )
+        snapshot.analysis = FatLossAnalyzer.analyze(snapshot: snapshot)
+        let analysis = snapshot.analysis ?? FatLossAnalyzer.analyze(snapshot: snapshot)
+        let proteinGap = max(0, analysis.proteinTargetLowerGrams - protein)
+        let targetText = deficitTarget > 0 ? "目标缺口 \(Int(deficitTarget)) kcal" : "未设置目标缺口"
+
+        let overall = "当前热量差 = 基础 \(Int(restingCalories.rounded())) + 活动 \(Int(liveActiveCalories.rounded())) - 摄入 \(Int(intakeCalories.rounded())) = \(Int(deficit.rounded())) kcal；\(targetText)。\(analysis.energyMessage)"
+        let breakfast = proteinGap > 35
+            ? "优先补蛋白：鸡蛋/牛奶/无糖酸奶/豆浆任选 1-2 份，主食选燕麦、全麦面包或玉米。"
+            : "保持高蛋白和稳定碳水，避免只喝咖啡或空腹太久。"
+        let lunch = deficit > analysis.recommendedDeficitUpperBound
+            ? "不要再压得太低，吃一份掌心大小蛋白 + 1 拳主食 + 2 拳蔬菜。"
+            : "一份瘦肉/鱼虾/豆腐 + 半碗到一碗主食 + 2 拳蔬菜，少油少酱。"
+        let dinner = liveActiveCalories > 0
+            ? "如果晚上还要运动，晚餐保留适量碳水；运动后饿了补蛋白，不用高油夜宵补偿。"
+            : "晚餐以蛋白和蔬菜为主，主食按饥饿感半碗左右，别为了缺口极端少吃。"
+        let snack = proteinGap > 20
+            ? "零嘴优先选无糖酸奶、牛奶、茶叶蛋、低脂奶酪或水果；少选饼干、炸物、奶茶。"
+            : "想吃零嘴就控制在 100-200 kcal，选水果、酸奶、坚果小份或无糖饮料。"
+
+        return MealReply(
+            overall: overall,
+            breakfast: breakfast,
+            lunch: lunch,
+            dinner: dinner,
+            snack: snack
+        )
     }
 
     @MainActor
@@ -180,11 +322,6 @@ struct TodayView: View {
     }
 
     private func upsertHealthEntries(from snapshot: HealthSnapshot, profile: UserProfile) {
-        if let bodyMassKg = snapshot.bodyMassKg {
-            profile.currentWeightKg = bodyMassKg
-            profile.updatedAt = .now
-        }
-
         let aggregateID = "daily-\(snapshot.date.dayKey)"
         let aggregate = exercises.first { $0.healthKitWorkoutID == aggregateID }
         if let aggregate {
@@ -237,7 +374,7 @@ struct TodayView: View {
             intakeCalories: intake,
             healthKitActiveCalories: healthSnapshot.activeEnergyKcal,
             manualActiveCalories: manualCalories,
-            healthKitRestingCalories: healthSnapshot.basalEnergyKcal,
+            healthKitRestingCalories: nil,
             profile: profile
         )
 
@@ -300,12 +437,21 @@ struct TodayView: View {
         let adviceText: String
         do {
             let advice = try await aiClient.generateDailyAdvice(snapshot: snapshot, settings: settings)
-            adviceText = [
+            var sections = [
                 advice.summary,
-                "饮食：\(advice.tomorrowDietAdvice)",
-                "运动：\(advice.tomorrowExerciseAdvice)",
+            ]
+            if let todayMealAdvice = advice.todayMealAdvice, !todayMealAdvice.isEmpty {
+                sections.append("今日饮食：\(todayMealAdvice)")
+            }
+            if let snackAdvice = advice.snackAdvice, !snackAdvice.isEmpty {
+                sections.append("零嘴：\(snackAdvice)")
+            }
+            sections += [
+                "明日饮食：\(advice.tomorrowDietAdvice)",
+                "明日运动：\(advice.tomorrowExerciseAdvice)",
                 "恢复：\(advice.recoveryAdvice)"
-            ].joined(separator: "\n\n")
+            ]
+            adviceText = sections.joined(separator: "\n\n")
         } catch {
             adviceText = fallbackAdvice(snapshot: snapshot, error: error)
         }
@@ -352,12 +498,40 @@ struct TodayView: View {
         return """
         \(analysis.energyStatus)：\(analysis.energyMessage)
 
-        明天饮食：\(actionText)
+        今日饮食：\(actionText)
+
+        零嘴：优先选择无糖酸奶、牛奶、茶叶蛋、水果或少量坚果；如果今天摄入已经很低，不建议靠不吃正餐来换零食。
+
+        明日饮食：继续按高蛋白、足量蔬菜、适量主食安排，训练日前后保留碳水。
 
         明天运动：保持中等强度活动，如果今天训练量较低，可以增加 30-45 分钟快走或力量训练。
 
         数据可信度：\(Int((analysis.dataQualityScore * 100).rounded()))%。AI 建议暂未生成：\(error.localizedDescription)\(warningText)
         """
+    }
+}
+
+private struct MealReply {
+    var overall: String
+    var breakfast: String
+    var lunch: String
+    var dinner: String
+    var snack: String
+}
+
+private struct MealAdviceRow: View {
+    var title: String
+    var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
     }
 }
 
@@ -541,8 +715,8 @@ private struct DietCoachSheet: View {
             $0.source == .healthKit && ($0.healthKitWorkoutID?.hasPrefix("daily-") ?? false)
         }?.activeCalories ?? 0
         let activeCalories = todaySummary?.activeCalories ?? (healthAggregateCalories + manualCalories)
-        let restingCalories = todaySummary?.restingCalories ?? CalorieCalculator.bmr(profile: profile)
-        let totalBurn = todaySummary?.totalBurnCalories ?? (activeCalories + restingCalories)
+        let restingCalories = CalorieCalculator.bmr(profile: profile)
+        let totalBurn = activeCalories + restingCalories
         let deficit = totalBurn - totalIntake
         let confidenceValues = confirmedMeals.map(\.confidence).filter { $0 > 0 }
         let averageMealConfidence = confidenceValues.isEmpty

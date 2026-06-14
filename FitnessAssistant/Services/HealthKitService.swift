@@ -16,7 +16,6 @@ struct HealthSnapshot {
     var steps: Double
     var activeEnergyKcal: Double
     var basalEnergyKcal: Double?
-    var bodyMassKg: Double?
     var workouts: [HealthWorkout]
 }
 
@@ -32,8 +31,6 @@ final class HealthKitService: ObservableObject {
         var types = Set<HKObjectType>()
         if let step = HKQuantityType.quantityType(forIdentifier: .stepCount) { types.insert(step) }
         if let active = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) { types.insert(active) }
-        if let basal = HKQuantityType.quantityType(forIdentifier: .basalEnergyBurned) { types.insert(basal) }
-        if let bodyMass = HKQuantityType.quantityType(forIdentifier: .bodyMass) { types.insert(bodyMass) }
         types.insert(HKObjectType.workoutType())
         return types
     }
@@ -58,28 +55,23 @@ final class HealthKitService: ObservableObject {
 
     func fetchSnapshot(for date: Date = .now) async throws -> HealthSnapshot {
         guard isAvailable else {
-            return HealthSnapshot(date: date, steps: 0, activeEnergyKcal: 0, basalEnergyKcal: nil, bodyMassKg: nil, workouts: [])
+            return HealthSnapshot(date: date, steps: 0, activeEnergyKcal: 0, basalEnergyKcal: nil, workouts: [])
         }
 
         let interval = Calendar.current.dayInterval(containing: date)
         async let stepsValue = quantitySum(.stepCount, unit: .count(), start: interval.start, end: interval.end)
         async let activeEnergyValue = quantitySum(.activeEnergyBurned, unit: .kilocalorie(), start: interval.start, end: interval.end)
-        async let basalEnergyValue = quantitySum(.basalEnergyBurned, unit: .kilocalorie(), start: interval.start, end: interval.end)
-        async let bodyMassValue = latestQuantity(.bodyMass, unit: .gramUnit(with: .kilo), before: interval.end)
         async let workoutValues = workouts(start: interval.start, end: interval.end)
 
         let stepCount = try await stepsValue
         let activeEnergy = try await activeEnergyValue
-        let basalEnergy = try await basalEnergyValue
-        let bodyMass = try await bodyMassValue
         let workouts = try await workoutValues
 
         let snapshot = HealthSnapshot(
             date: date,
             steps: stepCount,
             activeEnergyKcal: activeEnergy,
-            basalEnergyKcal: basalEnergy > 0 ? basalEnergy : nil,
-            bodyMassKg: bodyMass,
+            basalEnergyKcal: nil,
             workouts: workouts
         )
         lastSyncDate = .now
@@ -103,28 +95,6 @@ final class HealthKitService: ObservableObject {
                     return
                 }
                 let value = result?.sumQuantity()?.doubleValue(for: unit) ?? 0
-                continuation.resume(returning: value)
-            }
-            healthStore.execute(query)
-        }
-    }
-
-    private func latestQuantity(
-        _ identifier: HKQuantityTypeIdentifier,
-        unit: HKUnit,
-        before end: Date
-    ) async throws -> Double? {
-        guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else { return nil }
-        let predicate = HKQuery.predicateForSamples(withStart: nil, end: end, options: [.strictEndDate])
-        let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
-
-        return try await withCheckedThrowingContinuation { continuation in
-            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: 1, sortDescriptors: [sort]) { _, samples, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                let value = (samples?.first as? HKQuantitySample)?.quantity.doubleValue(for: unit)
                 continuation.resume(returning: value)
             }
             healthStore.execute(query)

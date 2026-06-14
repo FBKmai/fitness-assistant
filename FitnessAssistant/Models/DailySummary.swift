@@ -73,6 +73,8 @@ struct DietCoachAdvice: Codable {
 
 struct DailyAdvice: Codable {
     var summary: String
+    var todayMealAdvice: String?
+    var snackAdvice: String?
     var tomorrowDietAdvice: String
     var tomorrowExerciseAdvice: String
     var recoveryAdvice: String
