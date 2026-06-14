@@ -51,8 +51,11 @@ final class DailySummary {
     var restingCalories: Double
     var totalBurnCalories: Double
     var calorieDeficit: Double
-    // 当日体重（kg），用于近 7 天体重趋势。新增属性带内联默认值便于 SwiftData 轻量迁移。
+    // 当日体重（kg）与三大营养素（克），用于趋势图。新增属性带内联默认值便于 SwiftData 轻量迁移。
     var weightKg: Double = 0
+    var proteinGrams: Double = 0
+    var carbsGrams: Double = 0
+    var fatGrams: Double = 0
     var adviceText: String
     var snapshotJSON: String
     var generatedAt: Date
@@ -66,6 +69,9 @@ final class DailySummary {
         totalBurnCalories: Double = 0,
         calorieDeficit: Double = 0,
         weightKg: Double = 0,
+        proteinGrams: Double = 0,
+        carbsGrams: Double = 0,
+        fatGrams: Double = 0,
         adviceText: String = "",
         snapshot: DailySnapshot? = nil,
         generatedAt: Date = .now
@@ -78,6 +84,9 @@ final class DailySummary {
         self.totalBurnCalories = totalBurnCalories
         self.calorieDeficit = calorieDeficit
         self.weightKg = weightKg
+        self.proteinGrams = proteinGrams
+        self.carbsGrams = carbsGrams
+        self.fatGrams = fatGrams
         self.adviceText = adviceText
         self.snapshotJSON = Self.encodeSnapshot(snapshot)
         self.generatedAt = generatedAt

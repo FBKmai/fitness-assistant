@@ -281,6 +281,9 @@ struct TodayView: View {
             totalBurnCalories: computation.totalBurnCalories,
             calorieDeficit: computation.calorieDeficit,
             weightKg: profile.currentWeightKg,
+            proteinGrams: totalProtein,
+            carbsGrams: totalCarbs,
+            fatGrams: totalFat,
             adviceText: adviceText,
             snapshot: snapshot
         )
@@ -294,6 +297,9 @@ struct TodayView: View {
             existing.totalBurnCalories = newSummary.totalBurnCalories
             existing.calorieDeficit = newSummary.calorieDeficit
             existing.weightKg = newSummary.weightKg
+            existing.proteinGrams = newSummary.proteinGrams
+            existing.carbsGrams = newSummary.carbsGrams
+            existing.fatGrams = newSummary.fatGrams
             existing.adviceText = newSummary.adviceText
             existing.snapshot = newSummary.snapshot
             existing.generatedAt = .now
