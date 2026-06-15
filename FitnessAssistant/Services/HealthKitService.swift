@@ -27,6 +27,7 @@ struct HealthSnapshot {
     var steps: Double
     var activeEnergyKcal: Double
     var basalEnergyKcal: Double?
+    var sleepHours: Double?
     var workouts: [HealthWorkout]
     var bodyMetrics: HealthBodyMetrics
 }
@@ -46,6 +47,7 @@ final class HealthKitService: ObservableObject {
         if let bodyMass = HKQuantityType.quantityType(forIdentifier: .bodyMass) { types.insert(bodyMass) }
         if let bodyFat = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage) { types.insert(bodyFat) }
         if let bodyMassIndex = HKQuantityType.quantityType(forIdentifier: .bodyMassIndex) { types.insert(bodyMassIndex) }
+        if let sleep = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) { types.insert(sleep) }
         types.insert(HKObjectType.workoutType())
         return types
     }
@@ -76,6 +78,7 @@ final class HealthKitService: ObservableObject {
                 steps: 0,
                 activeEnergyKcal: 0,
                 basalEnergyKcal: nil,
+                sleepHours: nil,
                 workouts: [],
                 bodyMetrics: HealthBodyMetrics()
             )
@@ -86,17 +89,20 @@ final class HealthKitService: ObservableObject {
         async let activeEnergyValue = quantitySum(.activeEnergyBurned, unit: .kilocalorie(), start: interval.start, end: interval.end)
         async let workoutValues = workouts(start: interval.start, end: interval.end)
         async let bodyMetricsValue = bodyMetrics(start: interval.start, end: interval.end)
+        async let sleepHoursValue = sleepHours(start: interval.start, end: interval.end)
 
         let stepCount = try await stepsValue
         let activeEnergy = try await activeEnergyValue
         let workouts = try await workoutValues
         let bodyMetrics = try await bodyMetricsValue
+        let sleepHours = try await sleepHoursValue
 
         let snapshot = HealthSnapshot(
             date: date,
             steps: stepCount,
             activeEnergyKcal: activeEnergy,
             basalEnergyKcal: nil,
+            sleepHours: sleepHours,
             workouts: workouts,
             bodyMetrics: bodyMetrics
         )
@@ -173,6 +179,26 @@ final class HealthKitService: ObservableObject {
         )
     }
 
+    private func sleepHours(start: Date, end: Date) async throws -> Double? {
+        guard let type = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) else { return nil }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate])
+        let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                let seconds = (samples as? [HKCategorySample] ?? [])
+                    .filter { isAsleep($0.value) }
+                    .reduce(0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
+                continuation.resume(returning: seconds > 0 ? seconds / 3600 : nil)
+            }
+            healthStore.execute(query)
+        }
+    }
+
     private func latestQuantity(
         _ identifier: HKQuantityTypeIdentifier,
         unit: HKUnit,
@@ -217,6 +243,14 @@ final class HealthKitService: ObservableObject {
     private func normalizedPercent(_ value: Double) -> Double {
         value <= 1 ? value * 100 : value
     }
+}
+
+private func isAsleep(_ value: Int) -> Bool {
+    value == HKCategoryValueSleepAnalysis.asleep.rawValue
+        || value == HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue
+        || value == HKCategoryValueSleepAnalysis.asleepCore.rawValue
+        || value == HKCategoryValueSleepAnalysis.asleepDeep.rawValue
+        || value == HKCategoryValueSleepAnalysis.asleepREM.rawValue
 }
 
 private extension HKWorkoutActivityType {

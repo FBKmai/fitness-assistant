@@ -347,6 +347,124 @@ final class AIClient: ObservableObject {
         return content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    func generateCoachReply(
+        context: CoachContextSnapshot,
+        recentMessages: [CoachChatMessage],
+        imageDataList: [Data] = [],
+        settings: AISettings
+    ) async throws -> CoachReplyResult {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let contextData = try encoder.encode(context)
+        let contextJSON = String(data: contextData, encoding: .utf8) ?? "{}"
+
+        let timeFormatter = DateFormatter()
+        timeFormatter.locale = Locale(identifier: "zh_CN")
+        timeFormatter.dateFormat = "yyyy年M月d日 EEEE HH:mm"
+        let nowText = timeFormatter.string(from: context.requestedAt)
+
+        let systemPrompt = """
+        你是用户的长期中文健身减脂 AI 教练，不是一次性问答机器人。你必须综合完整上下文给出可执行建议，风格直接、具体、像一个持续跟进的教练。
+        当前时间是【\(nowText)】。下面的 context JSON 包含用户档案、今日状态、近 7/30 天趋势、饮食、训练、食物选项、训练计划和长期教练记忆。
+
+        你需要覆盖这些场景：
+        1. 饭前：判断这一餐怎么吃、吃多少、是否需要补蛋白/碳水/蔬菜。
+        2. 饭后：评价刚吃的东西、估算影响、给下一餐或明天的补救方向。
+        3. 训练前：结合睡眠、饥饿、感冒/疲劳、当前时间和训练安排，判断是否能练、练前吃什么。
+        4. 训练后：结合心率/消耗/运动类型，给练后餐、补水和恢复建议。
+        5. 食物判断：给红灯/黄灯/绿灯，解释热量、蛋白、脂肪、碳水、钠、水肿和饱腹感。
+        6. 外卖点单：给可直接照抄的点单方案和必须避开的配料/酱料。
+        7. 每日/每周复盘：算热量缺口、蛋白是否达标、体重波动是否是水分、是否接近平台期。
+        8. 恢复安全：遇到感冒、青鼻涕、睡眠不足、过度高心率或药物问题时保守处理，不提供医疗诊断，不建议带病高强度训练。
+
+        重要规则：
+        - 不要极端节食，不要建议用过量运动抵消饮食。
+        - 体重短期上涨时优先解释水分、钠、糖原、食物残渣和炎症锁水，不制造焦虑。
+        - 建议必须具体到食物组合、份量范围、训练强度或下一步动作。
+        - 如果用户明显是在记录“刚吃了/刚练完/今早体重/睡眠/喝水”，在 suggestedRecords 里给出可保存记录。
+        - 只有当信息稳定、未来也有用时，才写 memoryPatch，比如常吃食物、忌口、训练偏好、健康注意点。
+        - 只返回 JSON，不要使用 markdown。
+
+        JSON 格式：
+        {
+          "replyText": "自然中文回复正文",
+          "scenario": "mealBefore | mealAfter | workoutBefore | workoutAfter | dailyReview | weeklyReview | foodDecision | weightTrend | recoverySafety | general",
+          "riskLevel": "normal | caution | high",
+          "suggestedRecords": [
+            {
+              "kind": "meal | exercise | checkIn",
+              "title": "记录标题",
+              "note": "记录说明",
+              "date": "ISO8601 时间，可省略",
+              "mealTypeRaw": "breakfast | lunch | dinner | snack | other",
+              "textDescription": "餐食描述",
+              "totalCalories": 0,
+              "proteinGrams": 0,
+              "carbsGrams": 0,
+              "fatGrams": 0,
+              "workoutType": "运动类型",
+              "durationMinutes": 0,
+              "activeCalories": 0,
+              "steps": 0,
+              "weightKg": 0,
+              "bodyFatPercentage": 0,
+              "bodyMassIndex": 0,
+              "sleepHours": 0,
+              "waterMl": 0,
+              "hungerLevel": 0,
+              "mood": "心情",
+              "symptoms": "身体不适"
+            }
+          ],
+          "memoryPatch": {
+            "profileSummary": "可选，长期画像摘要",
+            "foodPreferences": ["常吃或偏好的食物"],
+            "avoidances": ["忌口或应少碰的食物"],
+            "trainingPreferences": ["训练偏好"],
+            "healthNotes": ["长期健康/恢复注意点"],
+            "rules": ["长期遵循的教练规则"]
+          }
+        }
+
+        context:
+        \(contextJSON)
+        """
+
+        let sortedMessages = Array(recentMessages
+            .sorted { $0.createdAt < $1.createdAt }
+            .suffix(16))
+        var messages: [ChatMessage] = [ChatMessage(role: "system", content: .text(systemPrompt))]
+        for message in sortedMessages {
+            if !imageDataList.isEmpty, message.id == sortedMessages.last?.id, message.role == .user {
+                var parts = [ChatContentPart.text(message.text)]
+                parts += imageDataList.map { imageData in
+                    ChatContentPart.imageURL("data:image/jpeg;base64,\(imageData.base64EncodedString())")
+                }
+                messages.append(ChatMessage(role: message.role.rawValue, content: .parts(parts)))
+            } else {
+                messages.append(ChatMessage(role: message.role.rawValue, content: .text(message.text)))
+            }
+        }
+
+        let isVision = !imageDataList.isEmpty
+
+        let content = try await complete(
+            model: isVision ? settings.visionModelName : settings.modelName,
+            baseURL: isVision ? settings.visionBaseURL : settings.baseURL,
+            apiKeychainKey: isVision ? settings.visionAPIKeychainKey : settings.apiKeychainKey,
+            messages: messages,
+            temperature: 0.45,
+            jsonMode: true,
+            maxTokens: 2600
+        )
+
+        var result = try AIResponseParser.decodeJSONObject(CoachReplyResult.self, from: content)
+        if result.replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            result.replyText = "AI 返回了空回复，请补充问题后重试。"
+        }
+        return result
+    }
+
     func testConnection(settings: AISettings) async throws -> String {
         let content = try await complete(
             model: settings.modelName,

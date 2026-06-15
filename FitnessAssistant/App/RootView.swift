@@ -19,33 +19,29 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            TodayView(selection: $selection)
-                .tabItem { Label("今日", systemImage: "gauge.with.dots.needle.67percent") }
+            CoachHomeView()
+                .tabItem { Label("教练", systemImage: "bubble.left.and.text.bubble.right") }
                 .tag(0)
 
-            MealsView()
-                .tabItem { Label("饮食", systemImage: "fork.knife") }
+            TodayView(selection: $selection)
+                .tabItem { Label("今日", systemImage: "gauge.with.dots.needle.67percent") }
                 .tag(1)
 
-            FoodOptionsView()
-                .tabItem { Label("食物", systemImage: "rectangle.stack") }
+            FoodHubView()
+                .tabItem { Label("食物", systemImage: "fork.knife") }
                 .tag(2)
-
-            DietCoachView()
-                .tabItem { Label("问AI", systemImage: "bubble.left.and.text.bubble.right") }
-                .tag(3)
 
             ExerciseView()
                 .tabItem { Label("运动", systemImage: "figure.run") }
-                .tag(4)
+                .tag(3)
 
             SummariesView()
                 .tabItem { Label("总结", systemImage: "doc.text.magnifyingglass") }
-                .tag(5)
+                .tag(4)
 
             SettingsView()
                 .tabItem { Label("设置", systemImage: "gearshape") }
-                .tag(6)
+                .tag(5)
         }
     }
 }

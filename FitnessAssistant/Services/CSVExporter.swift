@@ -1,7 +1,12 @@
 import Foundation
 
 enum CSVExporter {
-    static func export(meals: [MealEntry], exercises: [ExerciseEntry], summaries: [DailySummary]) throws -> [URL] {
+    static func export(
+        meals: [MealEntry],
+        exercises: [ExerciseEntry],
+        summaries: [DailySummary],
+        checkIns: [DailyCheckIn] = []
+    ) throws -> [URL] {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("FitnessAssistantExport-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -9,12 +14,14 @@ enum CSVExporter {
         let mealURL = directory.appendingPathComponent("meals.csv")
         let exerciseURL = directory.appendingPathComponent("exercise.csv")
         let summaryURL = directory.appendingPathComponent("daily_summaries.csv")
+        let checkInURL = directory.appendingPathComponent("daily_checkins.csv")
 
         try write(csv: mealsCSV(meals), to: mealURL)
         try write(csv: exercisesCSV(exercises), to: exerciseURL)
         try write(csv: summariesCSV(summaries), to: summaryURL)
+        try write(csv: checkInsCSV(checkIns), to: checkInURL)
 
-        return [mealURL, exerciseURL, summaryURL]
+        return [mealURL, exerciseURL, summaryURL, checkInURL]
     }
 
     static func mealsCSV(_ meals: [MealEntry]) -> String {
@@ -68,6 +75,26 @@ enum CSVExporter {
                 summary.bodyMetricsSyncedAt.map { DateFormatter.csvDateTime.string(from: $0) } ?? "",
                 summary.adviceText,
                 DateFormatter.csvDateTime.string(from: summary.generatedAt)
+            ]
+        }
+        return encode(rows)
+    }
+
+    static func checkInsCSV(_ checkIns: [DailyCheckIn]) -> String {
+        var rows = [["日期", "体重(kg)", "体脂率(%)", "BMI", "睡眠(小时)", "饮水(ml)", "饥饿感(1-10)", "心情", "症状", "备注", "更新时间"]]
+        rows += checkIns.sorted { $0.date < $1.date }.map { checkIn in
+            [
+                DateFormatter.csvDate.string(from: checkIn.date),
+                checkIn.weightKg > 0 ? format(checkIn.weightKg) : "",
+                checkIn.bodyFatPercentage.map(format) ?? "",
+                checkIn.bodyMassIndex.map(format) ?? "",
+                checkIn.sleepHours.map(format) ?? "",
+                checkIn.waterMl.map(format) ?? "",
+                checkIn.hungerLevel.map(String.init) ?? "",
+                checkIn.mood,
+                checkIn.symptoms,
+                checkIn.note,
+                DateFormatter.csvDateTime.string(from: checkIn.updatedAt)
             ]
         }
         return encode(rows)

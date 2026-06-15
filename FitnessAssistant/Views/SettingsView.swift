@@ -13,6 +13,7 @@ struct SettingsView: View {
     @Query(sort: \MealEntry.date, order: .reverse) private var meals: [MealEntry]
     @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
     @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
+    @Query(sort: \DailyCheckIn.date, order: .reverse) private var checkIns: [DailyCheckIn]
 
     @State private var heightCm = 170.0
     @State private var weightText = "70.0"
@@ -373,9 +374,10 @@ struct SettingsView: View {
         let mealsInRange = meals.filter { $0.date >= start && $0.date < end }
         let exercisesInRange = exercises.filter { $0.date >= start && $0.date < end }
         let summariesInRange = summaries.filter { $0.date >= start && $0.date < end }
+        let checkInsInRange = checkIns.filter { $0.date >= start && $0.date < end }
 
         do {
-            shareURLs = try CSVExporter.export(meals: mealsInRange, exercises: exercisesInRange, summaries: summariesInRange)
+            shareURLs = try CSVExporter.export(meals: mealsInRange, exercises: exercisesInRange, summaries: summariesInRange, checkIns: checkInsInRange)
             showingShare = true
             setMessage("已生成 CSV", isError: false)
         } catch {

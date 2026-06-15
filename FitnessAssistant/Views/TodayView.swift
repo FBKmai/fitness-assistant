@@ -4,29 +4,34 @@ import SwiftUI
 struct TodayView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var healthKitService: HealthKitService
-    @EnvironmentObject private var aiClient: AIClient
 
     @Query private var profiles: [UserProfile]
-    @Query private var settings: [AISettings]
     @Query(sort: \MealEntry.date, order: .reverse) private var meals: [MealEntry]
     @Query(sort: \FoodOption.updatedAt, order: .reverse) private var foodOptions: [FoodOption]
     @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
     @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
     @Query(sort: \MealAdviceRecord.createdAt, order: .reverse) private var mealAdviceRecords: [MealAdviceRecord]
+    @Query(sort: \DailyCheckIn.date, order: .reverse) private var checkIns: [DailyCheckIn]
 
     @State private var isWorking = false
-    @State private var statusMessage = "打开后可同步健康数据并生成今日建议"
+    @State private var statusMessage = "打开后可同步健康数据并刷新今日仪表盘"
     @State private var todayWeightText = ""
+    @State private var sleepHoursText = ""
+    @State private var waterMlText = ""
+    @State private var hungerLevel = 5.0
+    @State private var moodText = ""
+    @State private var symptomsText = ""
+    @State private var checkInNoteText = ""
 
     /// 由 MainTabView 注入，用于空态快捷按钮切换到「饮食」「运动」Tab。
     var selection: Binding<Int>? = nil
 
     private var profile: UserProfile? { profiles.first }
-    private var aiSettings: AISettings? { settings.first }
     private var todayMeals: [MealEntry] { meals.filter { Calendar.current.isDateInToday($0.date) } }
     private var confirmedMeals: [MealEntry] { todayMeals.filter(\.isConfirmed) }
     private var todayExercises: [ExerciseEntry] { exercises.filter { Calendar.current.isDateInToday($0.date) } }
     private var todaySummary: DailySummary? { summaries.first { Calendar.current.isDateInToday($0.date) } }
+    private var todayCheckIn: DailyCheckIn? { checkIns.first { Calendar.current.isDateInToday($0.date) } }
     private var latestTodayMealAdvice: MealAdviceRecord? {
         mealAdviceRecords.first { Calendar.current.isDateInToday($0.mealDate) }
     }
@@ -126,13 +131,13 @@ struct TodayView: View {
                             Text("记录今天的饮食和运动，获取专属的热量分析与明日建议。")
                         } actions: {
                             Button {
-                                selection?.wrappedValue = 1
+                                selection?.wrappedValue = 2
                             } label: {
                                 Label("记录饮食", systemImage: "fork.knife")
                             }
                             .buttonStyle(.borderedProminent)
                             Button {
-                                selection?.wrappedValue = 4
+                                selection?.wrappedValue = 3
                             } label: {
                                 Label("记录运动", systemImage: "figure.run")
                             }
@@ -145,6 +150,17 @@ struct TodayView: View {
                     LabeledContent("HealthKit", value: healthKitService.authorizationStatusDescription)
                     LabeledContent("饮食记录", value: "\(todayMeals.count) 条")
                     LabeledContent("运动记录", value: "\(todayExercises.count) 条")
+                    if let todayCheckIn {
+                        if let sleepHours = todayCheckIn.sleepHours {
+                            LabeledContent("睡眠", value: "\(String(format: "%.1f", sleepHours)) 小时")
+                        }
+                        if let waterMl = todayCheckIn.waterMl {
+                            LabeledContent("饮水", value: "\(Int(waterMl.rounded())) ml")
+                        }
+                        if !todayCheckIn.symptoms.isEmpty {
+                            LabeledContent("身体状态", value: todayCheckIn.symptoms)
+                        }
+                    }
                     if let analysis = todaySummary?.snapshot?.analysis {
                         LabeledContent("减脂判断", value: analysis.energyStatus)
                         LabeledContent("数据可信度", value: "\(Int((analysis.dataQualityScore * 100).rounded()))%")
@@ -154,6 +170,36 @@ struct TodayView: View {
                     } else {
                         LabeledContent("建议生成", value: "未生成")
                     }
+                }
+
+                Section("每日打卡") {
+                    HStack {
+                        TextField("睡眠 小时", text: $sleepHoursText)
+                            .keyboardType(.decimalPad)
+                        Text("小时")
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        TextField("饮水 ml", text: $waterMlText)
+                            .keyboardType(.decimalPad)
+                        Text("ml")
+                            .foregroundStyle(.secondary)
+                    }
+                    Stepper(value: $hungerLevel, in: 1...10, step: 1) {
+                        LabeledContent("饥饿感", value: "\(Int(hungerLevel))/10")
+                    }
+                    TextField("心情", text: $moodText)
+                    TextField("身体状态/症状", text: $symptomsText, axis: .vertical)
+                        .lineLimit(1...3)
+                    TextField("备注", text: $checkInNoteText, axis: .vertical)
+                        .lineLimit(1...3)
+                    Button {
+                        saveDailyCheckIn()
+                    } label: {
+                        Label("保存今日打卡", systemImage: "square.and.pencil")
+                    }
+                } footer: {
+                    Text("这些数据会进入 AI 教练上下文，用于判断训练强度、晚餐安排、体重波动和恢复风险。")
                 }
 
                 if let latestTodayMealAdvice {
@@ -186,7 +232,7 @@ struct TodayView: View {
                                 Text("处理中…")
                             }
                         } else {
-                            Label("同步并生成今日建议", systemImage: "arrow.triangle.2.circlepath")
+                            Label("同步并刷新今日数据", systemImage: "arrow.triangle.2.circlepath")
                         }
                     }
                     .disabled(isWorking)
@@ -195,7 +241,7 @@ struct TodayView: View {
                 }
 
                 if let advice = todaySummary?.adviceText, !advice.isEmpty {
-                    Section("今日总结与明日建议") {
+                    Section("今日数据摘要") {
                         Text(advice)
                             .font(.body)
                             .textSelection(.enabled)
@@ -205,6 +251,7 @@ struct TodayView: View {
             .navigationTitle("今日")
             .onAppear {
                 refreshTodayWeightText()
+                refreshCheckInFields()
             }
             .task {
                 await syncHealthKitOnly(silent: true)
@@ -224,6 +271,28 @@ struct TodayView: View {
         todayWeightText = String(format: "%.1f", profile.currentWeightKg)
     }
 
+    private func refreshCheckInFields() {
+        guard let todayCheckIn else { return }
+        if sleepHoursText.isEmpty, let sleepHours = todayCheckIn.sleepHours {
+            sleepHoursText = String(format: "%.1f", sleepHours)
+        }
+        if waterMlText.isEmpty, let waterMl = todayCheckIn.waterMl {
+            waterMlText = String(format: "%.0f", waterMl)
+        }
+        if let hunger = todayCheckIn.hungerLevel {
+            hungerLevel = Double(hunger)
+        }
+        if moodText.isEmpty {
+            moodText = todayCheckIn.mood
+        }
+        if symptomsText.isEmpty {
+            symptomsText = todayCheckIn.symptoms
+        }
+        if checkInNoteText.isEmpty {
+            checkInNoteText = todayCheckIn.note
+        }
+    }
+
     private func isValidWeight(_ value: Double?) -> Bool {
         guard let value else { return false }
         return (30...250).contains(value)
@@ -237,6 +306,8 @@ struct TodayView: View {
         if let todaySummary {
             todaySummary.weightKg = weight
         }
+        let checkIn = upsertTodayCheckIn()
+        checkIn.weightKg = weight
 
         do {
             try modelContext.save()
@@ -245,6 +316,41 @@ struct TodayView: View {
         } catch {
             statusMessage = error.localizedDescription
         }
+    }
+
+    private func saveDailyCheckIn() {
+        let checkIn = upsertTodayCheckIn()
+        checkIn.sleepHours = sleepHoursText.doubleValue
+        checkIn.waterMl = waterMlText.doubleValue
+        checkIn.hungerLevel = Int(hungerLevel.rounded())
+        checkIn.mood = moodText.trimmingCharacters(in: .whitespacesAndNewlines)
+        checkIn.symptoms = symptomsText.trimmingCharacters(in: .whitespacesAndNewlines)
+        checkIn.note = checkInNoteText.trimmingCharacters(in: .whitespacesAndNewlines)
+        checkIn.updatedAt = .now
+
+        if let weight = todayWeightValue, isValidWeight(weight) {
+            checkIn.weightKg = weight
+        }
+        if let todaySummary {
+            checkIn.bodyFatPercentage = todaySummary.bodyFatPercentage
+            checkIn.bodyMassIndex = todaySummary.bodyMassIndex
+        }
+
+        do {
+            try modelContext.save()
+            statusMessage = "今日打卡已保存，AI 教练上下文已更新。"
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    private func upsertTodayCheckIn() -> DailyCheckIn {
+        if let todayCheckIn {
+            return todayCheckIn
+        }
+        let checkIn = DailyCheckIn(date: Calendar.current.startOfDay(for: .now))
+        modelContext.insert(checkIn)
+        return checkIn
     }
 
     @MainActor
@@ -259,6 +365,7 @@ struct TodayView: View {
             try? await healthKitService.requestAuthorization()
             let healthSnapshot = try await healthKitService.fetchSnapshot(for: .now)
             upsertHealthEntries(from: healthSnapshot, profile: profile)
+            refreshTodayCheckInFromHealth(healthSnapshot)
             refreshTodaySummaryFromHealth(healthSnapshot, profile: profile)
             try modelContext.save()
 
@@ -276,7 +383,7 @@ struct TodayView: View {
 
     @MainActor
     private func syncAndGenerateSummary(silent: Bool = false) async {
-        guard let profile, let aiSettings else { return }
+        guard let profile else { return }
         if isWorking { return }
         isWorking = true
         if !silent { statusMessage = "正在同步 HealthKit..." }
@@ -286,9 +393,10 @@ struct TodayView: View {
             try? await healthKitService.requestAuthorization()
             let healthSnapshot = try await healthKitService.fetchSnapshot(for: .now)
             upsertHealthEntries(from: healthSnapshot, profile: profile)
+            refreshTodayCheckInFromHealth(healthSnapshot)
             try modelContext.save()
 
-            let summary = try await buildSummary(profile: profile, settings: aiSettings, healthSnapshot: healthSnapshot)
+            let summary = try await buildSummary(profile: profile, healthSnapshot: healthSnapshot)
             upsertSummary(summary)
             try modelContext.save()
             statusMessage = "已更新 \(DateFormatter.shortTime.string(from: .now))"
@@ -342,6 +450,25 @@ struct TodayView: View {
         }
     }
 
+    private func refreshTodayCheckInFromHealth(_ snapshot: HealthSnapshot) {
+        guard snapshot.bodyMetrics.hasAnyValue || snapshot.sleepHours != nil else { return }
+        let checkIn = upsertTodayCheckIn()
+        if let weight = snapshot.bodyMetrics.weightKg, isValidWeight(weight) {
+            checkIn.weightKg = weight
+        }
+        if let bodyFat = snapshot.bodyMetrics.bodyFatPercentage {
+            checkIn.bodyFatPercentage = bodyFat
+        }
+        if let bmi = snapshot.bodyMetrics.bodyMassIndex {
+            checkIn.bodyMassIndex = bmi
+        }
+        if let sleepHours = snapshot.sleepHours {
+            checkIn.sleepHours = sleepHours
+        }
+        checkIn.updatedAt = .now
+        refreshCheckInFields()
+    }
+
     private func refreshTodaySummaryFromHealth(_ snapshot: HealthSnapshot, profile: UserProfile) {
         guard let todaySummary else { return }
 
@@ -391,7 +518,6 @@ struct TodayView: View {
 
     private func buildSummary(
         profile: UserProfile,
-        settings: AISettings,
         healthSnapshot: HealthSnapshot
     ) async throws -> DailySummary {
         let confirmedMeals = todayMeals.filter(\.isConfirmed)
@@ -469,27 +595,7 @@ struct TodayView: View {
         )
         snapshot.analysis = FatLossAnalyzer.analyze(snapshot: snapshot)
 
-        let adviceText: String
-        do {
-            let advice = try await aiClient.generateDailyAdvice(snapshot: snapshot, settings: settings)
-            var sections = [
-                advice.summary,
-            ]
-            if let todayMealAdvice = advice.todayMealAdvice, !todayMealAdvice.isEmpty {
-                sections.append("今日饮食：\(todayMealAdvice)")
-            }
-            if let snackAdvice = advice.snackAdvice, !snackAdvice.isEmpty {
-                sections.append("零嘴：\(snackAdvice)")
-            }
-            sections += [
-                "明日饮食：\(advice.tomorrowDietAdvice)",
-                "明日运动：\(advice.tomorrowExerciseAdvice)",
-                "恢复：\(advice.recoveryAdvice)"
-            ]
-            adviceText = sections.joined(separator: "\n\n")
-        } catch {
-            adviceText = fallbackAdvice(snapshot: snapshot, error: error)
-        }
+        let adviceText = localSummaryText(snapshot: snapshot)
 
         return DailySummary(
             date: Calendar.current.startOfDay(for: .now),
@@ -532,22 +638,19 @@ struct TodayView: View {
         }
     }
 
-    private func fallbackAdvice(snapshot: DailySnapshot, error: Error) -> String {
+    private func localSummaryText(snapshot: DailySnapshot) -> String {
         let analysis = snapshot.analysis ?? FatLossAnalyzer.analyze(snapshot: snapshot)
-        let warningText = analysis.warnings.isEmpty ? "" : "\n\n注意：\(analysis.warnings.joined(separator: "；"))"
-        let actionText = analysis.nextActions.joined(separator: "；")
+        let warnings = analysis.warnings.isEmpty ? "" : "\n\n注意：\(analysis.warnings.joined(separator: "；"))"
         return """
         \(analysis.energyStatus)：\(analysis.energyMessage)
 
-        今日饮食：\(actionText)
+        今日摄入 \(snapshot.intakeCalories.kcalText)，活动消耗 \(snapshot.activeCalories.kcalText)，热量差 \(snapshot.calorieDeficit.signedKcalText)。
 
-        零嘴：优先选择无糖酸奶、牛奶、茶叶蛋、水果或少量坚果；如果今天摄入已经很低，不建议靠不吃正餐来换零食。
+        蛋白质：\(Int(snapshot.proteinGrams.rounded()))g（目标约 \(Int(analysis.proteinTargetLowerGrams.rounded()))-\(Int(analysis.proteinTargetUpperGrams.rounded()))g）。脂肪状态：\(analysis.fatStatus)。
 
-        明日饮食：继续按高蛋白、足量蔬菜、适量主食安排，训练日前后保留碳水。
+        下一步：\(analysis.nextActions.joined(separator: "；"))
 
-        明天运动：保持中等强度活动，如果今天训练量较低，可以增加 30-45 分钟快走或力量训练。
-
-        数据可信度：\(Int((analysis.dataQualityScore * 100).rounded()))%。AI 建议暂未生成：\(error.localizedDescription)\(warningText)
+        需要 AI 给饭前饭后、训练前后或明日安排时，请到「教练」Tab 继续对话。\(warnings)
         """
     }
 }

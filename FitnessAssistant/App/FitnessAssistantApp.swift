@@ -16,7 +16,11 @@ struct FitnessAssistantApp: App {
             ExerciseEntry.self,
             DailySummary.self,
             AISettings.self,
-            TrainingPlan.self
+            TrainingPlan.self,
+            DailyCheckIn.self,
+            CoachChatSession.self,
+            CoachChatMessage.self,
+            CoachMemory.self
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {

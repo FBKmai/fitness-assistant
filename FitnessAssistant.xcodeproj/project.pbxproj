@@ -37,6 +37,12 @@
 		FA2000000000000000000023 /* TrainingPlanModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000027 /* TrainingPlanModels.swift */; };
 		FA2000000000000000000024 /* TrainingPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000028 /* TrainingPlanView.swift */; };
 		FA2000000000000000000025 /* DietCoachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000029 /* DietCoachView.swift */; };
+		FA2000000000000000000026 /* CoachModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002A /* CoachModels.swift */; };
+		FA2000000000000000000027 /* CoachContextBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002B /* CoachContextBuilder.swift */; };
+		FA2000000000000000000028 /* CoachHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002C /* CoachHomeView.swift */; };
+		FA2000000000000000000029 /* FoodHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002D /* FoodHubView.swift */; };
+		FA200000000000000000002A /* CoachContextBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002E /* CoachContextBuilderTests.swift */; };
+		FA200000000000000000002B /* CoachReplyResultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002F /* CoachReplyResultTests.swift */; };
 		FA2000000000000000000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000001C /* Assets.xcassets */; };
 		FA200000000000000000001A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000001B /* PrivacyInfo.xcprivacy */; };
 		FA200000000000000000001B /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FA100000000000000000001D /* HealthKit.framework */; };
@@ -87,6 +93,10 @@
 		FA1000000000000000000026 /* FoodOptionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoodOptionsView.swift; sourceTree = "<group>"; };
 		FA1000000000000000000028 /* TrainingPlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingPlanView.swift; sourceTree = "<group>"; };
 		FA1000000000000000000029 /* DietCoachView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DietCoachView.swift; sourceTree = "<group>"; };
+		FA100000000000000000002A /* CoachModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachModels.swift; sourceTree = "<group>"; };
+		FA100000000000000000002B /* CoachContextBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachContextBuilder.swift; sourceTree = "<group>"; };
+		FA100000000000000000002C /* CoachHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachHomeView.swift; sourceTree = "<group>"; };
+		FA100000000000000000002D /* FoodHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoodHubView.swift; sourceTree = "<group>"; };
 		FA1000000000000000000019 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		FA100000000000000000001A /* FitnessAssistant.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FitnessAssistant.entitlements; sourceTree = "<group>"; };
 		FA100000000000000000001B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -98,6 +108,8 @@
 		FA1000000000000000000021 /* CalorieCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalorieCalculatorTests.swift; sourceTree = "<group>"; };
 		FA1000000000000000000022 /* CSVExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVExporterTests.swift; sourceTree = "<group>"; };
 		FA1000000000000000000023 /* AIResponseParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIResponseParserTests.swift; sourceTree = "<group>"; };
+		FA100000000000000000002E /* CoachContextBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachContextBuilderTests.swift; sourceTree = "<group>"; };
+		FA100000000000000000002F /* CoachReplyResultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachReplyResultTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -177,6 +189,7 @@
 				FA1000000000000000000005 /* MealModels.swift */,
 				FA1000000000000000000025 /* FoodOptionModels.swift */,
 				FA1000000000000000000027 /* TrainingPlanModels.swift */,
+				FA100000000000000000002A /* CoachModels.swift */,
 				FA1000000000000000000006 /* ExerciseEntry.swift */,
 				FA1000000000000000000007 /* DailySummary.swift */,
 				FA1000000000000000000008 /* AISettings.swift */,
@@ -190,6 +203,7 @@
 				FA1000000000000000000009 /* KeychainStore.swift */,
 				FA100000000000000000000A /* AIClient.swift */,
 				FA1000000000000000000011 /* AIResponseParser.swift */,
+				FA100000000000000000002B /* CoachContextBuilder.swift */,
 				FA100000000000000000000B /* HealthKitService.swift */,
 				FA100000000000000000000C /* CalorieCalculator.swift */,
 				FA100000000000000000000D /* NotificationScheduler.swift */,
@@ -204,6 +218,7 @@
 			isa = PBXGroup;
 			children = (
 				FA1000000000000000000012 /* OnboardingView.swift */,
+				FA100000000000000000002C /* CoachHomeView.swift */,
 				FA1000000000000000000013 /* TodayView.swift */,
 				FA1000000000000000000014 /* MealsView.swift */,
 				FA1000000000000000000015 /* ExerciseView.swift */,
@@ -212,6 +227,7 @@
 				FA1000000000000000000018 /* SystemPickers.swift */,
 				FA1000000000000000000024 /* DesignSystem.swift */,
 				FA1000000000000000000026 /* FoodOptionsView.swift */,
+				FA100000000000000000002D /* FoodHubView.swift */,
 				FA1000000000000000000028 /* TrainingPlanView.swift */,
 				FA1000000000000000000029 /* DietCoachView.swift */,
 			);
@@ -224,6 +240,8 @@
 				FA1000000000000000000021 /* CalorieCalculatorTests.swift */,
 				FA1000000000000000000022 /* CSVExporterTests.swift */,
 				FA1000000000000000000023 /* AIResponseParserTests.swift */,
+				FA100000000000000000002E /* CoachContextBuilderTests.swift */,
+				FA100000000000000000002F /* CoachReplyResultTests.swift */,
 			);
 			path = FitnessAssistantTests;
 			sourceTree = "<group>";
@@ -352,12 +370,14 @@
 				FA2000000000000000000005 /* MealModels.swift in Sources */,
 				FA2000000000000000000021 /* FoodOptionModels.swift in Sources */,
 				FA2000000000000000000023 /* TrainingPlanModels.swift in Sources */,
+				FA2000000000000000000026 /* CoachModels.swift in Sources */,
 				FA2000000000000000000006 /* ExerciseEntry.swift in Sources */,
 				FA2000000000000000000007 /* DailySummary.swift in Sources */,
 				FA2000000000000000000008 /* AISettings.swift in Sources */,
 				FA2000000000000000000009 /* KeychainStore.swift in Sources */,
 				FA200000000000000000000A /* AIClient.swift in Sources */,
 				FA2000000000000000000011 /* AIResponseParser.swift in Sources */,
+				FA2000000000000000000027 /* CoachContextBuilder.swift in Sources */,
 				FA200000000000000000000B /* HealthKitService.swift in Sources */,
 				FA200000000000000000000C /* CalorieCalculator.swift in Sources */,
 				FA200000000000000000000D /* NotificationScheduler.swift in Sources */,
@@ -365,6 +385,7 @@
 				FA200000000000000000000F /* CSVExporter.swift in Sources */,
 				FA2000000000000000000010 /* DateHelpers.swift in Sources */,
 				FA2000000000000000000012 /* OnboardingView.swift in Sources */,
+				FA2000000000000000000028 /* CoachHomeView.swift in Sources */,
 				FA2000000000000000000013 /* TodayView.swift in Sources */,
 				FA2000000000000000000014 /* MealsView.swift in Sources */,
 				FA2000000000000000000015 /* ExerciseView.swift in Sources */,
@@ -373,6 +394,7 @@
 				FA2000000000000000000018 /* SystemPickers.swift in Sources */,
 				FA2000000000000000000020 /* DesignSystem.swift in Sources */,
 				FA2000000000000000000022 /* FoodOptionsView.swift in Sources */,
+				FA2000000000000000000029 /* FoodHubView.swift in Sources */,
 				FA2000000000000000000024 /* TrainingPlanView.swift in Sources */,
 				FA2000000000000000000025 /* DietCoachView.swift in Sources */,
 			);
@@ -385,6 +407,8 @@
 				FA200000000000000000001D /* CalorieCalculatorTests.swift in Sources */,
 				FA200000000000000000001E /* CSVExporterTests.swift in Sources */,
 				FA200000000000000000001F /* AIResponseParserTests.swift in Sources */,
+				FA200000000000000000002A /* CoachContextBuilderTests.swift in Sources */,
+				FA200000000000000000002B /* CoachReplyResultTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
