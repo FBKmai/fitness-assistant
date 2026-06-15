@@ -172,7 +172,7 @@ struct TodayView: View {
                     }
                 }
 
-                Section("每日打卡") {
+                Section {
                     HStack {
                         TextField("睡眠 小时", text: $sleepHoursText)
                             .keyboardType(.decimalPad)
@@ -198,6 +198,8 @@ struct TodayView: View {
                     } label: {
                         Label("保存今日打卡", systemImage: "square.and.pencil")
                     }
+                } header: {
+                    Text("每日打卡")
                 } footer: {
                     Text("这些数据会进入 AI 教练上下文，用于判断训练强度、晚餐安排、体重波动和恢复风险。")
                 }

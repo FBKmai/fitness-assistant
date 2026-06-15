@@ -246,8 +246,7 @@ final class HealthKitService: ObservableObject {
 }
 
 private func isAsleep(_ value: Int) -> Bool {
-    value == HKCategoryValueSleepAnalysis.asleep.rawValue
-        || value == HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue
+    value == HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue
         || value == HKCategoryValueSleepAnalysis.asleepCore.rawValue
         || value == HKCategoryValueSleepAnalysis.asleepDeep.rawValue
         || value == HKCategoryValueSleepAnalysis.asleepREM.rawValue
