@@ -162,6 +162,63 @@ final class AIClient: ObservableObject {
         return try AIResponseParser.decodeJSONObject(FoodOptionEstimate.self, from: content)
     }
 
+    func generateTrainingPlan(input: TrainingPlanInput, settings: AISettings) async throws -> TrainingPlanResult {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let inputData = try encoder.encode(input)
+        let inputJSON = String(data: inputData, encoding: .utf8) ?? "{}"
+
+        let systemPrompt = """
+        你是世界顶级的健身与运动学教练。下面的 JSON 是用户的身体数据（性别、年龄、身高、体重、体脂率、BMI、基础代谢 bmr、目标 goal、近 7 天训练次数 recentWeeklyWorkouts、日均步数 avgDailySteps）以及手填的训练与饮食信息（活动水平 activityLevel、每周训练天数 trainingDaysPerWeek、训练经验 trainingExperience、训练偏好 trainingTypePreference、忌口/饮食偏好 dietPreference、目标体重 targetWeightKg、期望周期 targetWeeks、睡眠 sleepHours、补充说明 extraNote）。
+        请用以下方法论制定一份个性化的减脂或增肌方案：
+        1. 算 BMR：默认 Mifflin-St Jeor；若提供体脂率，用 Katch-McArdle（基于去脂体重）并与前者取一个保守中间值。
+        2. 算 TDEE = BMR × 活动系数（结合 activityLevel 与训练频率）。
+        3. 定热量与三大营养素：减脂在 TDEE 基础上制造 15%~25% 缺口（约 300~500 kcal/天）；增肌制造 10%~20% 盈余（约 200~400 kcal/天）；蛋白质 1.6~2.2 g/kg（减脂期取上限保肌），脂肪 0.6~1.0 g/kg 且不低于总热量 20%，碳水用剩余热量补足。每日摄入不要压到 BMR 以下。
+        4. 评估目标可行性：合理减脂速度每周 0.5%~1% 体重，增肌更慢。若用户的目标体重/周期不现实或不健康，要在 realisticGoalNote 里直说，并给出现实的预期。
+        5. 训练安排：按 trainingDaysPerWeek 给出每周 7 天的安排（练什么/休息），减脂期强调大重量保肌 + 步数（NEAT），避免过量 HIIT 影响恢复；每个训练日给出具体动作（复合动作打头）、组数、次数。
+        6. 饮食结构：给出推荐食材与可落地的餐次示例（尊重 dietPreference 的忌口），蔬菜管够。
+        7. 监测与调整：说明如何用一周体重均值校准并微调。
+        建议要现实、可执行、个性化，不提供医疗诊断，不建议极端节食。
+        只返回 JSON，不要使用 markdown。所有数值使用 kcal 或克。
+        JSON 格式：
+        {
+          "realisticGoalNote": "目标可行性评估，必要时纠正不现实的预期",
+          "bmr": 0,
+          "tdee": 0,
+          "dailyCalories": 0,
+          "proteinGrams": 0,
+          "carbsGrams": 0,
+          "fatGrams": 0,
+          "macroNote": "三大营养素分配的说明",
+          "weeklySchedule": [
+            {"dayLabel": "周一", "focus": "力量 A", "exercises": [{"name": "深蹲", "sets": "3~4 组", "reps": "6~12 次", "note": "复合动作打头"}], "cardio": "练后 15min 坡度快走", "note": ""}
+          ],
+          "trainingPrinciples": "训练要点与原则",
+          "dietStructure": "推荐食材与饮食结构",
+          "mealExamples": [
+            {"title": "工作日早餐", "content": "水煮蛋 2~3 个 + 红薯 150g", "calories": 0}
+          ],
+          "monitoringAdvice": "如何监测与调整",
+          "summary": "一句话总结这份计划的核心"
+        }
+        """
+
+        let content = try await complete(
+            model: settings.modelName,
+            baseURL: settings.baseURL,
+            apiKeychainKey: settings.apiKeychainKey,
+            messages: [
+                ChatMessage(role: "system", content: .text(systemPrompt)),
+                ChatMessage(role: "user", content: .text(inputJSON))
+            ],
+            temperature: 0.4,
+            jsonMode: true,
+            maxTokens: 3500
+        )
+
+        return try AIResponseParser.decodeJSONObject(TrainingPlanResult.self, from: content)
+    }
+
     func generateDailyAdvice(snapshot: DailySnapshot, settings: AISettings) async throws -> DailyAdvice {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -245,44 +302,49 @@ final class AIClient: ObservableObject {
         return try AIResponseParser.decodeJSONObject(MealAdviceResponse.self, from: content)
     }
 
-    func generateDietCoachAdvice(snapshot: DietCoachSnapshot, settings: AISettings) async throws -> DietCoachAdvice {
+    func generateDietCoachReply(context: DietCoachSnapshot, history: [DietCoachTurn], settings: AISettings) async throws -> String {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        let snapshotData = try encoder.encode(snapshot)
-        let snapshotJSON = String(data: snapshotData, encoding: .utf8) ?? "{}"
+        let contextData = try encoder.encode(context)
+        let contextJSON = String(data: contextData, encoding: .utf8) ?? "{}"
+
+        let timeFormatter = DateFormatter()
+        timeFormatter.locale = Locale(identifier: "zh_CN")
+        timeFormatter.dateFormat = "yyyy年M月d日 EEEE HH:mm"
+        let nowText = timeFormatter.string(from: context.requestedAt)
 
         let systemPrompt = """
-        你是一个中文减脂饮食顾问。用户会问“现在这一餐怎么吃”一类问题。
-        下面的 JSON 包含用户身体资料（含体重、体脂率和 BMI，如 Apple 健康当天有数据）、今日已吃内容、今日运动/消耗、近 7 天趋势、用户勾选的候选食物选项卡 selectedFoodOptions、以及本地规则化 analysis。
-        请回答用户当前这一餐该怎么吃，并考虑接下来是否还有运动、今天已经吃了什么、蛋白质是否够、热量缺口是否过大或过小。
-        如果 selectedFoodOptions 不为空，请判断用户选中的这一餐或候选组合是否合理，指出如何调整份量或替换搭配；必要时推荐更合适的选项卡名称。
-        要具体到可执行食物组合和份量范围，例如“1 份掌心大小鸡胸/鱼/豆腐 + 1 碗米饭的 1/2-1 碗 + 2 拳蔬菜”。
-        如果用户提到晚上运动，请说明中午/下午是否需要碳水和蛋白，避免空腹硬撑或暴食补偿。
-        不提供医疗诊断，不建议极端节食。若数据不足，要明确说明不确定性。
-        只返回 JSON，不要使用 markdown。
-        JSON 格式：
-        {
-          "currentMealAdvice": "现在这一餐怎么吃",
-          "workoutFuelAdvice": "如果接下来有运动，如何安排训练前后补给",
-          "remainingDayPlan": "今天剩余饮食和活动安排",
-          "caution": "需要注意的风险或数据不足"
-        }
+        你是一个中文减脂饮食顾问。用户会问“现在这一餐怎么吃”一类问题，并可能继续追问来调整这一餐。
+        当前时间是【\(nowText)】，请据此判断现在大概是哪一餐（早/午/晚/加餐）。
+        下面的 JSON（context）包含：用户身体资料（含体重、体脂率、BMI，如 Apple 健康当天有数据）、今日已吃 todayMeals、今日运动消耗 todayWorkouts、最近几天饮食 recentMeals、最近几天消耗 recentWorkouts、近 7 天趋势 recentDays、用户勾选的候选食物选项卡 selectedFoodOptions、以及本地规则化判断 analysis。
+        请结合今日已吃、最近饮食与最近消耗，判断蛋白质是否够、热量缺口是否过大或过小，回答用户“现在这一餐”具体怎么吃。
+        要具体到可执行的食物组合和份量范围，例如“1 份掌心大小鸡胸/鱼/豆腐 + 半碗到一碗米饭 + 2 拳蔬菜”。
+        如果 selectedFoodOptions 不为空，请判断这些候选这一餐是否合理，指出如何调整份量或替换搭配。
+        只回答“这一餐”怎么吃：不要给运动前后补给安排，不要给今天剩余整天的计划，不要长篇大论。
+        如果用户接着追问（例如想换成面食、想少吃点），基于之前的对话和上下文调整这一餐的建议。
+        不提供医疗诊断，不建议极端节食。若数据不足，简要说明不确定性即可。
+        用自然中文回答，不要返回 JSON，也不要使用 markdown 代码块。
+
+        上下文数据（context）：
+        \(contextJSON)
         """
+
+        var messages: [ChatMessage] = [ChatMessage(role: "system", content: .text(systemPrompt))]
+        messages += history.map { turn in
+            ChatMessage(role: turn.role.rawValue, content: .text(turn.text))
+        }
 
         let content = try await complete(
             model: settings.modelName,
             baseURL: settings.baseURL,
             apiKeychainKey: settings.apiKeychainKey,
-            messages: [
-                ChatMessage(role: "system", content: .text(systemPrompt)),
-                ChatMessage(role: "user", content: .text(snapshotJSON))
-            ],
-            temperature: 0.4,
-            jsonMode: true,
-            maxTokens: 2000
+            messages: messages,
+            temperature: 0.5,
+            jsonMode: false,
+            maxTokens: 1200
         )
 
-        return try AIResponseParser.decodeJSONObject(DietCoachAdvice.self, from: content)
+        return content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func testConnection(settings: AISettings) async throws -> String {

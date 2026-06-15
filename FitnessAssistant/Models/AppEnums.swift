@@ -79,3 +79,49 @@ enum FoodOptionKind: String, CaseIterable, Codable, Identifiable {
         }
     }
 }
+
+/// 日常活动水平，对应训练计划里的活动系数（PAL），用于估算 TDEE。
+enum ActivityLevel: String, CaseIterable, Codable, Identifiable {
+    case sedentary
+    case light
+    case moderate
+    case active
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .sedentary: "久坐（几乎不动）"
+        case .light: "轻度活动"
+        case .moderate: "中度活动"
+        case .active: "高强度体力"
+        }
+    }
+
+    /// Physical Activity Level 系数：TDEE ≈ BMR × palFactor。
+    var palFactor: Double {
+        switch self {
+        case .sedentary: 1.2
+        case .light: 1.375
+        case .moderate: 1.55
+        case .active: 1.725
+        }
+    }
+}
+
+/// 训练经验/年限，影响计划的动作选择与强度。
+enum TrainingExperienceLevel: String, CaseIterable, Codable, Identifiable {
+    case beginner
+    case intermediate
+    case advanced
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .beginner: "初学者"
+        case .intermediate: "有基础"
+        case .advanced: "资深"
+        }
+    }
+}

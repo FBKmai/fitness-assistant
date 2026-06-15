@@ -15,7 +15,8 @@ struct FitnessAssistantApp: App {
             FoodOption.self,
             ExerciseEntry.self,
             DailySummary.self,
-            AISettings.self
+            AISettings.self,
+            TrainingPlan.self
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {

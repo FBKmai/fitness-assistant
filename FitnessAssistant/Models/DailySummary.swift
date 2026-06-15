@@ -43,8 +43,8 @@ struct DailySnapshot: Codable {
 }
 
 struct DietCoachSnapshot: Codable {
+    /// 当前时间，让 AI 判断现在是哪一餐。
     var requestedAt: Date
-    var userQuestion: String
     var goal: String
     var targetDailyDeficitKcal: Double
     var heightCm: Double
@@ -66,16 +66,31 @@ struct DietCoachSnapshot: Codable {
     var averageMealConfidence: Double?
     var todayMeals: [String]
     var todayWorkouts: [String]
+    /// 最近几天的饮食记录（不含今天），辅助判断。
+    var recentMeals: [String]
+    /// 最近几天的训练/活动消耗（不含今天）。
+    var recentWorkouts: [String]
     var selectedFoodOptions: [FoodOptionSnapshot]
     var recentDays: [DayTrend]
     var analysis: FatLossAnalysis
 }
 
-struct DietCoachAdvice: Codable {
-    var currentMealAdvice: String
-    var workoutFuelAdvice: String
-    var remainingDayPlan: String
-    var caution: String
+/// 「问 AI 怎么吃」多轮对话中的一条消息。
+struct DietCoachTurn: Codable, Identifiable {
+    enum Role: String, Codable {
+        case user
+        case assistant
+    }
+
+    var id = UUID()
+    var role: Role
+    var text: String
+
+    init(id: UUID = UUID(), role: Role, text: String) {
+        self.id = id
+        self.role = role
+        self.text = text
+    }
 }
 
 struct DailyAdvice: Codable {

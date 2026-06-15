@@ -24,15 +24,29 @@ struct ExerciseView: View {
                     } description: {
                         Text("Apple 健康会自动同步活动数据，也可点击右上角 + 手动补录运动。")
                     } actions: {
+                        NavigationLink {
+                            TrainingPlanListView()
+                        } label: {
+                            Label("制定训练计划", systemImage: "figure.strengthtraining.traditional")
+                        }
+                        .buttonStyle(.borderedProminent)
                         Button {
                             showingNewEntry = true
                         } label: {
                             Label("手动补录", systemImage: "plus")
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.bordered)
                     }
                 } else {
                     List {
+                        Section {
+                            NavigationLink {
+                                TrainingPlanListView()
+                            } label: {
+                                Label("训练计划制定", systemImage: "figure.strengthtraining.traditional")
+                            }
+                        }
+
                         ForEach(groupedExercises, id: \.day) { group in
                             Section(DateFormatter.dateHeader.string(from: group.day)) {
                                 ForEach(group.exercises) { exercise in

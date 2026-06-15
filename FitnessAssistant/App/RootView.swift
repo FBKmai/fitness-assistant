@@ -31,17 +31,21 @@ struct MainTabView: View {
                 .tabItem { Label("食物", systemImage: "rectangle.stack") }
                 .tag(2)
 
+            DietCoachView()
+                .tabItem { Label("问AI", systemImage: "bubble.left.and.text.bubble.right") }
+                .tag(3)
+
             ExerciseView()
                 .tabItem { Label("运动", systemImage: "figure.run") }
-                .tag(3)
+                .tag(4)
 
             SummariesView()
                 .tabItem { Label("总结", systemImage: "doc.text.magnifyingglass") }
-                .tag(4)
+                .tag(5)
 
             SettingsView()
                 .tabItem { Label("设置", systemImage: "gearshape") }
-                .tag(5)
+                .tag(6)
         }
     }
 }
