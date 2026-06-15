@@ -562,7 +562,7 @@ struct TrainingPlanEditorView: View {
 
     private func buildInput(profile: UserProfile) -> TrainingPlanInput {
         let weight = weightKg.doubleValue ?? profile.currentWeightKg
-        TrainingPlanInput(
+        return TrainingPlanInput(
             gender: profile.gender.title,
             age: profile.age,
             heightCm: profile.heightCm,

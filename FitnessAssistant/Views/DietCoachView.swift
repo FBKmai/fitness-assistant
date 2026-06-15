@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 /// 「问 AI 怎么吃」独立 Tab：结合今日记录、最近饮食与消耗，针对「这一餐」给建议，可多轮追问调整。
 struct DietCoachView: View {
