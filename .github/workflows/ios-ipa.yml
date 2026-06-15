@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - "教练核心"
   workflow_dispatch:
     inputs:
       signing_mode:
