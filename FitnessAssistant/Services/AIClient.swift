@@ -91,6 +91,77 @@ final class AIClient: ObservableObject {
         return try AIResponseParser.decodeJSONObject(MealEstimate.self, from: content)
     }
 
+    func estimateFoodOption(
+        name: String,
+        kind: FoodOptionKind,
+        sourceDescription: String,
+        imageDataList: [Data],
+        settings: AISettings,
+        bodyContext: String? = nil
+    ) async throws -> FoodOptionEstimate {
+        let systemPrompt = """
+        你是一个中文营养标签和餐食图片识别助手。用户正在建立一个常吃食物选项卡，类型可能是单品或套餐。
+        请根据食物照片、营养成分表照片、包装文字或用户补充描述，估算固定份量的热量、三大营养素、每个组成食物的大概分量，并给出减脂推荐指数。
+        套餐必须拆成多个定量组成食物；单品也要给出一条 components。
+        推荐指数范围 0-100，越适合减脂期日常选择分数越高。判断时考虑热量密度、蛋白质、脂肪、精制碳水、饱腹感和可持续性。
+        如果图片或营养表不清楚，要在 summary 或 recommendationReason 里说明不确定性，并降低 confidence。
+        只返回 JSON，不要使用 markdown。所有数值使用 kcal 或克。
+        JSON 格式：
+        {
+          "name": "选项卡名称",
+          "kind": "single 或 combo",
+          "portionDescription": "总份量描述，例如 1 份约 350g",
+          "components": [
+            {"name": "食物名", "portionDescription": "约 100g", "calories": 0, "proteinGrams": 0, "carbsGrams": 0, "fatGrams": 0, "note": "估算依据"}
+          ],
+          "totalCalories": 0,
+          "proteinGrams": 0,
+          "carbsGrams": 0,
+          "fatGrams": 0,
+          "confidence": 0.0,
+          "recommendationScore": 0,
+          "recommendationReason": "为什么推荐或不推荐",
+          "summary": "一句中文总结"
+        }
+        """
+
+        let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let source = sourceDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseText = """
+        选项卡类型：\(kind.title)（raw=\(kind.rawValue)）
+        \(title.isEmpty ? "" : "用户填写名称：\(title)")
+        \(source.isEmpty ? "请根据上传图片或营养表估算。" : "用户补充描述：\(source)")
+        """
+        let userText = bodyContext.map { "\(baseText)\n\n（用户身体资料，仅供推荐指数判断参考：\($0)）" } ?? baseText
+
+        let userContent: ChatContent
+        if imageDataList.isEmpty {
+            userContent = .text(userText)
+        } else {
+            var parts: [ChatContentPart] = [.text(userText)]
+            parts += imageDataList.map { imageData in
+                .imageURL("data:image/jpeg;base64,\(imageData.base64EncodedString())")
+            }
+            userContent = .parts(parts)
+        }
+
+        let isVision = !imageDataList.isEmpty
+        let content = try await complete(
+            model: isVision ? settings.visionModelName : settings.modelName,
+            baseURL: isVision ? settings.visionBaseURL : settings.baseURL,
+            apiKeychainKey: isVision ? settings.visionAPIKeychainKey : settings.apiKeychainKey,
+            messages: [
+                ChatMessage(role: "system", content: .text(systemPrompt)),
+                ChatMessage(role: "user", content: userContent)
+            ],
+            temperature: 0.2,
+            jsonMode: true,
+            maxTokens: 4000
+        )
+
+        return try AIResponseParser.decodeJSONObject(FoodOptionEstimate.self, from: content)
+    }
+
     func generateDailyAdvice(snapshot: DailySnapshot, settings: AISettings) async throws -> DailyAdvice {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -182,8 +253,9 @@ final class AIClient: ObservableObject {
 
         let systemPrompt = """
         你是一个中文减脂饮食顾问。用户会问“现在这一餐怎么吃”一类问题。
-        下面的 JSON 包含用户身体资料（含体重、体脂率和 BMI，如 Apple 健康当天有数据）、今日已吃内容、今日运动/消耗、近 7 天趋势、以及本地规则化 analysis。
+        下面的 JSON 包含用户身体资料（含体重、体脂率和 BMI，如 Apple 健康当天有数据）、今日已吃内容、今日运动/消耗、近 7 天趋势、用户勾选的候选食物选项卡 selectedFoodOptions、以及本地规则化 analysis。
         请回答用户当前这一餐该怎么吃，并考虑接下来是否还有运动、今天已经吃了什么、蛋白质是否够、热量缺口是否过大或过小。
+        如果 selectedFoodOptions 不为空，请判断用户选中的这一餐或候选组合是否合理，指出如何调整份量或替换搭配；必要时推荐更合适的选项卡名称。
         要具体到可执行食物组合和份量范围，例如“1 份掌心大小鸡胸/鱼/豆腐 + 1 碗米饭的 1/2-1 碗 + 2 拳蔬菜”。
         如果用户提到晚上运动，请说明中午/下午是否需要碳水和蛋白，避免空腹硬撑或暴食补偿。
         不提供医疗诊断，不建议极端节食。若数据不足，要明确说明不确定性。

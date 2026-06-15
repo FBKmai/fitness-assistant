@@ -9,6 +9,7 @@ struct TodayView: View {
     @Query private var profiles: [UserProfile]
     @Query private var settings: [AISettings]
     @Query(sort: \MealEntry.date, order: .reverse) private var meals: [MealEntry]
+    @Query(sort: \FoodOption.updatedAt, order: .reverse) private var foodOptions: [FoodOption]
     @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
     @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
     @Query(sort: \MealAdviceRecord.createdAt, order: .reverse) private var mealAdviceRecords: [MealAdviceRecord]
@@ -132,7 +133,7 @@ struct TodayView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             Button {
-                                selection?.wrappedValue = 2
+                                selection?.wrappedValue = 3
                             } label: {
                                 Label("记录运动", systemImage: "figure.run")
                             }
@@ -233,6 +234,7 @@ struct TodayView: View {
                         profile: profile,
                         settings: aiSettings,
                         meals: meals,
+                        foodOptions: foodOptions,
                         exercises: exercises,
                         summaries: summaries
                     )
@@ -590,6 +592,44 @@ private struct AdviceTextBlock: View {
     }
 }
 
+private struct FoodOptionSelectionToggle: View {
+    let option: FoodOption
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                FoodOptionThumbnail(path: option.photoLocalPath, size: 48)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(option.name)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        Text(option.kind.title)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("\(option.totalCalories.kcalText) · 推荐 \(Int(option.recommendationScore.rounded()))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 10) {
+                        MacroLabel(name: "蛋白", grams: option.proteinGrams, color: .macroProtein)
+                        MacroLabel(name: "碳水", grams: option.carbsGrams, color: .macroCarbs)
+                        MacroLabel(name: "脂肪", grams: option.fatGrams, color: .macroFat)
+                    }
+                }
+                Spacer()
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? .green : .secondary)
+                    .font(.title3)
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct DietCoachSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var aiClient: AIClient
@@ -597,10 +637,12 @@ private struct DietCoachSheet: View {
     let profile: UserProfile
     let settings: AISettings
     let meals: [MealEntry]
+    let foodOptions: [FoodOption]
     let exercises: [ExerciseEntry]
     let summaries: [DailySummary]
 
     @State private var question = "今天晚上要运动，现在是中午，我适合吃什么？"
+    @State private var selectedFoodOptionIDs: Set<UUID> = []
     @State private var advice: DietCoachAdvice?
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -611,6 +653,10 @@ private struct DietCoachSheet: View {
 
     private var confirmedMeals: [MealEntry] {
         todayMeals.filter(\.isConfirmed)
+    }
+
+    private var selectedFoodOptions: [FoodOption] {
+        foodOptions.filter { selectedFoodOptionIDs.contains($0.id) }
     }
 
     private var todayExercises: [ExerciseEntry] {
@@ -658,6 +704,29 @@ private struct DietCoachSheet: View {
                     .disabled(isLoading || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
 
+                Section {
+                    if foodOptions.isEmpty {
+                        ContentUnavailableView {
+                            Label("还没有食物选项卡", systemImage: "rectangle.stack")
+                        } description: {
+                            Text("先到「食物」Tab 保存常吃单品或套餐，再让 AI 从候选项里判断。")
+                        }
+                    } else {
+                        ForEach(foodOptions) { option in
+                            FoodOptionSelectionToggle(
+                                option: option,
+                                isSelected: selectedFoodOptionIDs.contains(option.id)
+                            ) {
+                                toggleFoodOption(option)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("候选食物选项卡")
+                } footer: {
+                    Text("勾选后，AI 会判断这一餐是否合理，并给出份量调整或替换建议。")
+                }
+
                 Section("当前数据") {
                     LabeledContent("今日摄入", value: totalIntake.kcalText)
                     LabeledContent("蛋白质", value: "\(Int(totalProtein.rounded())) g")
@@ -695,6 +764,14 @@ private struct DietCoachSheet: View {
                     Button("关闭") { dismiss() }
                 }
             }
+        }
+    }
+
+    private func toggleFoodOption(_ option: FoodOption) {
+        if selectedFoodOptionIDs.contains(option.id) {
+            selectedFoodOptionIDs.remove(option.id)
+        } else {
+            selectedFoodOptionIDs.insert(option.id)
         }
     }
 
@@ -760,6 +837,7 @@ private struct DietCoachSheet: View {
             averageMealConfidence: dailySnapshot.averageMealConfidence,
             todayMeals: dailySnapshot.meals,
             todayWorkouts: dailySnapshot.workouts,
+            selectedFoodOptions: selectedFoodOptions.map(\.snapshot),
             recentDays: dailySnapshot.recentDays,
             analysis: analysis
         )
@@ -834,6 +912,10 @@ private struct DietCoachSheet: View {
     private func fallbackAdvice(snapshot: DietCoachSnapshot) -> DietCoachAdvice {
         let analysis = snapshot.analysis
         let proteinGap = max(0, analysis.proteinTargetLowerGrams - snapshot.proteinGrams)
+        let selectedOptionText = snapshot.selectedFoodOptions
+            .sorted { $0.recommendationScore > $1.recommendationScore }
+            .map { "\($0.name)(\($0.totalCalories.kcalText)，推荐\(Int($0.recommendationScore.rounded())))" }
+            .joined(separator: "、")
         let currentMeal = proteinGap > 20
             ? "这一餐优先补蛋白：选择一份瘦肉、鱼虾、鸡蛋、豆腐或无糖酸奶，搭配 2 拳蔬菜。若晚上要运动，再加半碗到一碗米饭、面、土豆或燕麦。"
             : "这一餐保持清爽均衡：一份优质蛋白 + 2 拳蔬菜 + 按饥饿感加入半碗主食，少油烹饪。"
@@ -843,7 +925,7 @@ private struct DietCoachSheet: View {
         let remaining = analysis.nextActions.joined(separator: "；")
         let caution = (analysis.warnings + analysis.dataQualityNotes).joined(separator: "；")
         return DietCoachAdvice(
-            currentMealAdvice: currentMeal,
+            currentMealAdvice: selectedOptionText.isEmpty ? currentMeal : "\(currentMeal)\n\n已选候选：\(selectedOptionText)。优先选推荐指数高、蛋白更足、油脂更低的选项；热量偏高时减少主食或酱料。",
             workoutFuelAdvice: workout,
             remainingDayPlan: remaining.isEmpty ? analysis.energyMessage : remaining,
             caution: caution.isEmpty ? "这是本地规则建议，AI 恢复后可以生成更个性化的版本。" : caution

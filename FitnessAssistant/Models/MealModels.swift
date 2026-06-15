@@ -85,6 +85,8 @@ final class MealEntry {
     var mealTypeRaw: String = MealType.other.rawValue
     var textDescription: String
     var photoLocalPath: String?
+    var foodOptionIDsJSON: String = "[]"
+    var optionExtraNote: String = ""
     var estimatedItemsJSON: String
     var totalCalories: Double
     var proteinGrams: Double
@@ -101,6 +103,8 @@ final class MealEntry {
         mealType: MealType = .other,
         textDescription: String = "",
         photoLocalPath: String? = nil,
+        foodOptionIDs: [UUID] = [],
+        optionExtraNote: String = "",
         estimatedItems: [MealFoodItem] = [],
         totalCalories: Double = 0,
         proteinGrams: Double = 0,
@@ -116,6 +120,8 @@ final class MealEntry {
         self.mealTypeRaw = mealType.rawValue
         self.textDescription = textDescription
         self.photoLocalPath = photoLocalPath
+        self.foodOptionIDsJSON = Self.encodeFoodOptionIDs(foodOptionIDs)
+        self.optionExtraNote = optionExtraNote
         self.estimatedItemsJSON = Self.encodeItems(estimatedItems)
         self.totalCalories = totalCalories
         self.proteinGrams = proteinGrams
@@ -137,6 +143,11 @@ final class MealEntry {
         set { estimatedItemsJSON = Self.encodeItems(newValue) }
     }
 
+    var foodOptionIDs: [UUID] {
+        get { Self.decodeFoodOptionIDs(foodOptionIDsJSON) }
+        set { foodOptionIDsJSON = Self.encodeFoodOptionIDs(newValue) }
+    }
+
     private static func encodeItems(_ items: [MealFoodItem]) -> String {
         guard let data = try? JSONEncoder().encode(items) else { return "[]" }
         return String(data: data, encoding: .utf8) ?? "[]"
@@ -145,6 +156,16 @@ final class MealEntry {
     private static func decodeItems(_ json: String) -> [MealFoodItem] {
         guard let data = json.data(using: .utf8) else { return [] }
         return (try? JSONDecoder().decode([MealFoodItem].self, from: data)) ?? []
+    }
+
+    private static func encodeFoodOptionIDs(_ ids: [UUID]) -> String {
+        guard let data = try? JSONEncoder().encode(ids) else { return "[]" }
+        return String(data: data, encoding: .utf8) ?? "[]"
+    }
+
+    private static func decodeFoodOptionIDs(_ json: String) -> [UUID] {
+        guard let data = json.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([UUID].self, from: data)) ?? []
     }
 }
 

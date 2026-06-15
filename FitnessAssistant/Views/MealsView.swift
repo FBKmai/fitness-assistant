@@ -102,6 +102,12 @@ private struct MealRow: View {
                 Text(meal.textDescription.isEmpty ? "未填写描述" : meal.textDescription)
                     .font(.body)
                     .lineLimit(2)
+                if !meal.optionExtraNote.isEmpty {
+                    Text("备注：\(meal.optionExtraNote)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 HStack(spacing: 12) {
                     MacroLabel(name: "蛋白", grams: meal.proteinGrams, color: .macroProtein)
                     MacroLabel(name: "碳水", grams: meal.carbsGrams, color: .macroCarbs)
@@ -144,6 +150,7 @@ struct MealEditorView: View {
     @Query(sort: \MealEntry.date, order: .reverse) private var mealHistory: [MealEntry]
     @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
     @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
+    @Query(sort: \FoodOption.updatedAt, order: .reverse) private var foodOptions: [FoodOption]
 
     private let maxImageCount = 8
     /// 非空表示编辑既有记录，nil 表示新增。
@@ -161,6 +168,12 @@ struct MealEditorView: View {
     @State private var fatGrams: String
     @State private var confidence: Double
     @State private var items: [MealFoodItem]
+    @State private var selectedFoodOptionIDs: Set<UUID>
+    @State private var optionExtraNote: String
+    @State private var showingFoodOptionPicker = false
+    @State private var saveAsFoodOption = false
+    @State private var newFoodOptionKind: FoodOptionKind
+    @State private var newFoodOptionName: String
     @State private var isEstimating = false
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -172,6 +185,8 @@ struct MealEditorView: View {
         case proteinGrams
         case carbsGrams
         case fatGrams
+        case optionExtraNote
+        case newFoodOptionName
     }
 
     init(meal: MealEntry? = nil) {
@@ -185,12 +200,20 @@ struct MealEditorView: View {
         _fatGrams = State(initialValue: Self.numberText(meal?.fatGrams, decimals: 1))
         _confidence = State(initialValue: meal?.confidence ?? 0)
         _items = State(initialValue: meal?.estimatedItems ?? [])
+        _selectedFoodOptionIDs = State(initialValue: Set(meal?.foodOptionIDs ?? []))
+        _optionExtraNote = State(initialValue: meal?.optionExtraNote ?? "")
+        _newFoodOptionKind = State(initialValue: (meal?.estimatedItems.count ?? 0) > 1 ? .combo : .single)
+        _newFoodOptionName = State(initialValue: meal?.textDescription ?? "")
     }
 
     private var isEditing: Bool { editingMeal != nil }
 
     private var canEstimate: Bool {
         !textDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !imageDataList.isEmpty
+    }
+
+    private var selectedFoodOptions: [FoodOption] {
+        foodOptions.filter { selectedFoodOptionIDs.contains($0.id) }
     }
 
     private var confidenceColor: Color {
@@ -274,6 +297,70 @@ struct MealEditorView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+
+                Section {
+                    Button {
+                        showingFoodOptionPicker = true
+                    } label: {
+                        Label(
+                            selectedFoodOptions.isEmpty ? "选择常吃食物或套餐" : "已选择 \(selectedFoodOptions.count) 个选项卡",
+                            systemImage: "rectangle.stack"
+                        )
+                    }
+
+                    if !selectedFoodOptions.isEmpty {
+                        ForEach(selectedFoodOptions) { option in
+                            HStack(spacing: 10) {
+                                FoodOptionThumbnail(path: option.photoLocalPath, size: 44)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(option.name)
+                                        .font(.subheadline.weight(.semibold))
+                                    Text("\(option.kind.title) · \(option.totalCalories.kcalText)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button {
+                                    selectedFoodOptionIDs.remove(option.id)
+                                    applySelectedFoodOptions()
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        TextField("这一顿的额外备注，例如 少饭 / 加蛋 / 酱料减半", text: $optionExtraNote)
+                            .focused($focusedField, equals: .optionExtraNote)
+
+                        Button {
+                            applySelectedFoodOptions()
+                        } label: {
+                            Label("套用到本次饮食", systemImage: "arrow.down.doc")
+                        }
+                    }
+                } header: {
+                    Text("食物选项卡")
+                } footer: {
+                    Text("选择后会自动带入热量、营养明细和描述，额外备注只作用于这一顿。")
+                }
+
+                Section {
+                    Toggle("记录并且新增为食物选项卡", isOn: $saveAsFoodOption)
+                    if saveAsFoodOption {
+                        Picker("选项卡类型", selection: $newFoodOptionKind) {
+                            ForEach(FoodOptionKind.allCases) { kind in
+                                Text(kind.title).tag(kind)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        TextField("选项卡名称", text: $newFoodOptionName)
+                            .focused($focusedField, equals: .newFoodOptionName)
+                    }
+                } footer: {
+                    Text("开启后，本次饮食保存成功时会同步生成一个食物选项卡；必须带有照片或营养表照片。")
                 }
 
                 Section("AI 估算") {
@@ -400,6 +487,11 @@ struct MealEditorView: View {
                     imageDataList.append(data)
                 }
             }
+            .sheet(isPresented: $showingFoodOptionPicker, onDismiss: {
+                applySelectedFoodOptions()
+            }) {
+                FoodOptionPickerSheet(foodOptions: foodOptions, selectedIDs: $selectedFoodOptionIDs)
+            }
         }
     }
 
@@ -437,6 +529,45 @@ struct MealEditorView: View {
         selectedPhotos = []
     }
 
+    private func applySelectedFoodOptions() {
+        let options = selectedFoodOptions
+        guard !options.isEmpty else { return }
+
+        let calories = options.reduce(0) { $0 + $1.totalCalories }
+        let protein = options.reduce(0) { $0 + $1.proteinGrams }
+        let carbs = options.reduce(0) { $0 + $1.carbsGrams }
+        let fat = options.reduce(0) { $0 + $1.fatGrams }
+        totalCalories = String(format: "%.0f", calories)
+        proteinGrams = String(format: "%.1f", protein)
+        carbsGrams = String(format: "%.1f", carbs)
+        fatGrams = String(format: "%.1f", fat)
+        confidence = averageConfidence(for: options)
+        items = options.flatMap { option in
+            option.mealItems(optionNote: optionExtraNote)
+        }
+
+        let optionText = options
+            .map { option -> String in
+                let portion = option.portionDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+                return portion.isEmpty ? option.name : "\(option.name)(\(portion))"
+            }
+            .joined(separator: " + ")
+        let note = optionExtraNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        let description = note.isEmpty ? "选项卡：\(optionText)" : "选项卡：\(optionText)。备注：\(note)"
+        if textDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || textDescription.hasPrefix("选项卡：") {
+            textDescription = description
+        }
+        if newFoodOptionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            newFoodOptionName = options.count == 1 ? options[0].name : options.map(\.name).joined(separator: " + ")
+        }
+    }
+
+    private func averageConfidence(for options: [FoodOption]) -> Double {
+        let values = options.map(\.confidence).filter { $0 > 0 }
+        guard !values.isEmpty else { return 0 }
+        return values.reduce(0, +) / Double(values.count)
+    }
+
     @MainActor
     private func estimate() async {
         guard let aiSettings = settings.first else { return }
@@ -471,6 +602,10 @@ struct MealEditorView: View {
     @MainActor
     private func save() async {
         guard !isSaving else { return }
+        if saveAsFoodOption && imageDataList.isEmpty && editingMeal?.photoLocalPath == nil {
+            errorMessage = "新增食物选项卡需要照片或营养表照片"
+            return
+        }
         isSaving = true
         defer { isSaving = false }
 
@@ -479,7 +614,7 @@ struct MealEditorView: View {
             if let firstImageData = imageDataList.first {
                 photoFileName = try ImageStorage.saveMealPhoto(data: firstImageData)
             } else {
-                photoFileName = nil
+                photoFileName = editingMeal?.photoLocalPath
             }
 
             let savedMeal: MealEntry
@@ -488,6 +623,8 @@ struct MealEditorView: View {
                 editingMeal.mealType = mealType
                 editingMeal.textDescription = textDescription
                 editingMeal.photoLocalPath = photoFileName
+                editingMeal.foodOptionIDs = Array(selectedFoodOptionIDs)
+                editingMeal.optionExtraNote = optionExtraNote
                 editingMeal.estimatedItems = items
                 editingMeal.totalCalories = totalCalories.doubleValue ?? 0
                 editingMeal.proteinGrams = proteinGrams.doubleValue ?? 0
@@ -503,6 +640,8 @@ struct MealEditorView: View {
                     mealType: mealType,
                     textDescription: textDescription,
                     photoLocalPath: photoFileName,
+                    foodOptionIDs: Array(selectedFoodOptionIDs),
+                    optionExtraNote: optionExtraNote,
                     estimatedItems: items,
                     totalCalories: totalCalories.doubleValue ?? 0,
                     proteinGrams: proteinGrams.doubleValue ?? 0,
@@ -515,11 +654,75 @@ struct MealEditorView: View {
                 savedMeal = meal
             }
             try modelContext.save()
+            if saveAsFoodOption {
+                try createFoodOption(from: savedMeal, photoFileName: photoFileName)
+                try modelContext.save()
+            }
             await generateAndArchiveAdvice(for: savedMeal)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func createFoodOption(from meal: MealEntry, photoFileName: String?) throws {
+        guard let photoFileName else {
+            throw AIClientError.transport("新增食物选项卡需要照片或营养表照片")
+        }
+        let optionName = newFoodOptionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? defaultFoodOptionName(for: meal)
+            : newFoodOptionName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sourceItems = meal.estimatedItems.isEmpty
+            ? [MealFoodItem(name: optionName, calories: meal.totalCalories, proteinGrams: meal.proteinGrams, carbsGrams: meal.carbsGrams, fatGrams: meal.fatGrams, note: optionExtraNote)]
+            : meal.estimatedItems
+        let components = sourceItems.map { item in
+            FoodOptionComponent(
+                name: item.name,
+                portionDescription: item.note,
+                calories: item.calories,
+                proteinGrams: item.proteinGrams,
+                carbsGrams: item.carbsGrams,
+                fatGrams: item.fatGrams,
+                note: item.note
+            )
+        }
+        let score = localRecommendationScore(calories: meal.totalCalories, protein: meal.proteinGrams, fat: meal.fatGrams)
+        let option = FoodOption(
+            name: optionName,
+            kind: newFoodOptionKind,
+            photoLocalPath: photoFileName,
+            sourceDescription: "由 \(meal.mealType.title) 饮食记录生成：\(meal.textDescription)",
+            portionDescription: optionExtraNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "本次记录份量" : optionExtraNote,
+            components: components,
+            totalCalories: meal.totalCalories,
+            proteinGrams: meal.proteinGrams,
+            carbsGrams: meal.carbsGrams,
+            fatGrams: meal.fatGrams,
+            confidence: meal.confidence,
+            recommendationScore: score,
+            recommendationReason: "根据本次记录自动生成，建议后续在食物页补充营养表或重新用视觉 AI 校准。",
+            aiSummary: meal.textDescription
+        )
+        modelContext.insert(option)
+    }
+
+    private func defaultFoodOptionName(for meal: MealEntry) -> String {
+        let trimmed = meal.textDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "\(meal.mealType.title)选项卡"
+        }
+        return String(trimmed.prefix(24))
+    }
+
+    private func localRecommendationScore(calories: Double, protein: Double, fat: Double) -> Double {
+        guard calories > 0 else { return 50 }
+        let proteinPer100Kcal = protein / calories * 100
+        let fatRatio = fat * 9 / max(calories, 1)
+        var score = 60.0
+        score += min(proteinPer100Kcal * 4, 25)
+        if calories <= 650 { score += 10 } else { score -= min((calories - 650) / 30, 20) }
+        if fatRatio > 0.45 { score -= 12 }
+        return min(max(score, 20), 95)
     }
 
     @MainActor

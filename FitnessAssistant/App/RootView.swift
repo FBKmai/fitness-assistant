@@ -27,17 +27,21 @@ struct MainTabView: View {
                 .tabItem { Label("饮食", systemImage: "fork.knife") }
                 .tag(1)
 
+            FoodOptionsView()
+                .tabItem { Label("食物", systemImage: "rectangle.stack") }
+                .tag(2)
+
             ExerciseView()
                 .tabItem { Label("运动", systemImage: "figure.run") }
-                .tag(2)
+                .tag(3)
 
             SummariesView()
                 .tabItem { Label("总结", systemImage: "doc.text.magnifyingglass") }
-                .tag(3)
+                .tag(4)
 
             SettingsView()
                 .tabItem { Label("设置", systemImage: "gearshape") }
-                .tag(4)
+                .tag(5)
         }
     }
 }

@@ -12,6 +12,7 @@ struct FitnessAssistantApp: App {
             UserProfile.self,
             MealEntry.self,
             MealAdviceRecord.self,
+            FoodOption.self,
             ExerciseEntry.self,
             DailySummary.self,
             AISettings.self

@@ -66,6 +66,7 @@ struct DietCoachSnapshot: Codable {
     var averageMealConfidence: Double?
     var todayMeals: [String]
     var todayWorkouts: [String]
+    var selectedFoodOptions: [FoodOptionSnapshot]
     var recentDays: [DayTrend]
     var analysis: FatLossAnalysis
 }

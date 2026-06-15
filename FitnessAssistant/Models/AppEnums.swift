@@ -65,3 +65,17 @@ enum MealType: String, CaseIterable, Codable, Identifiable {
         }
     }
 }
+
+enum FoodOptionKind: String, CaseIterable, Codable, Identifiable {
+    case single
+    case combo
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .single: "单品"
+        case .combo: "套餐"
+        }
+    }
+}
