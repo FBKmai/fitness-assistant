@@ -21,7 +21,7 @@ struct CoachHomeView: View {
     @State private var input = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var showContext = true
+    @State private var showContext = false
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var imageDataList: [Data] = []
     @FocusState private var inputFocused: Bool
@@ -128,9 +128,7 @@ struct CoachHomeView: View {
     }
 
     private var statusCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("今日状态", systemImage: "gauge.with.dots.needle.67percent")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 8) {
             if let context = currentContext {
                 HStack(spacing: AppMetrics.tileSpacing) {
                     MetricTile(title: "摄入", value: context.today.intakeCalories.kcalValue, systemImage: "fork.knife")
@@ -152,10 +150,11 @@ struct CoachHomeView: View {
                 }
             } else {
                 Text("请先完成资料设置。")
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(12)
+        .padding(10)
         .background(Color.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cardCornerRadius))
     }
@@ -163,12 +162,13 @@ struct CoachHomeView: View {
     private var quickActions: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                quickButton("现在怎么吃", "现在这一餐怎么吃？请结合我今天已经吃的、运动和最近趋势给具体份量。")
+                quickButton("现在怎么吃", "现在这一餐怎么吃？食物选项只是参考，也可以另外推荐。请结合我今天已经吃的、最近的运动消耗和热量趋势给具体份量。")
                 quickButton("刚吃完复盘", "我刚吃完这一餐，请帮我判断这顿对减脂的影响，并给下一步补救建议。")
                 quickButton("练前安排", "我准备去训练，现在适合练吗？练前要不要吃点什么？")
                 quickButton("每日复盘", "请做今天的完整复盘，指出热量缺口、蛋白、睡眠和明天安排。")
                 quickButton("能不能吃", "我现在想吃这个，帮我按红灯/黄灯/绿灯判断。")
             }
+            .padding(.horizontal, 1)
         }
     }
 
@@ -178,7 +178,8 @@ struct CoachHomeView: View {
             inputFocused = true
         }
         .buttonStyle(.bordered)
-        .font(.subheadline)
+        .controlSize(.small)
+        .font(.caption)
     }
 
     private var contextCard: some View {
@@ -413,33 +414,110 @@ private struct CoachChatBubble: View {
     var onSaveRecord: (CoachSuggestedRecord) -> Void
 
     var body: some View {
-        VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 8) {
+        VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
+            if message.role == .assistant {
+                assistantHeader
+            }
+
             Text(message.text)
                 .font(.body)
                 .textSelection(.enabled)
                 .padding(12)
                 .background(message.role == .user ? Color.accentColor.opacity(0.16) : Color.cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cardCornerRadius))
-                .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
+                .frame(maxWidth: message.role == .user ? 300 : .infinity, alignment: .leading)
 
             if message.role == .assistant, !message.suggestedRecords.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("可保存记录")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    ForEach(message.suggestedRecords) { record in
-                        Button {
-                            onSaveRecord(record)
-                        } label: {
-                            Label(record.title, systemImage: icon(for: record.kind))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                suggestedRecordsView
             }
         }
+        .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
+    }
+
+    private var assistantHeader: some View {
+        HStack(spacing: 6) {
+            Text(message.scenario.title)
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color.accentColor.opacity(0.12))
+                .clipShape(Capsule())
+            if let risk = riskBadge {
+                Label(risk.text, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(risk.color)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(risk.color.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+        }
+    }
+
+    private var riskBadge: (text: String, color: Color)? {
+        switch message.riskLevel {
+        case "caution": ("注意", Color.orange)
+        case "high": ("高风险", Color.red)
+        default: nil
+        }
+    }
+
+    private var suggestedRecordsView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("可采纳 / 保存")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(message.suggestedRecords) { record in
+                Button {
+                    onSaveRecord(record)
+                } label: {
+                    recordCard(record)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func recordCard(_ record: CoachSuggestedRecord) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: icon(for: record.kind))
+                    .foregroundStyle(.secondary)
+                Text(record.title)
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                Image(systemName: "plus.circle.fill")
+                    .foregroundStyle(Color.accentColor)
+            }
+            if record.kind == .meal, let macro = mealMacroText(record) {
+                Text(macro)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if !record.note.isEmpty {
+                Text(record.note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cardCornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppMetrics.cardCornerRadius)
+                .strokeBorder(Color.accentColor.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    private func mealMacroText(_ record: CoachSuggestedRecord) -> String? {
+        var parts: [String] = []
+        if let cal = record.totalCalories, cal > 0 { parts.append(cal.kcalText) }
+        if let protein = record.proteinGrams, protein > 0 { parts.append("蛋白\(Int(protein.rounded()))g") }
+        if let carbs = record.carbsGrams, carbs > 0 { parts.append("碳水\(Int(carbs.rounded()))g") }
+        if let fat = record.fatGrams, fat > 0 { parts.append("脂肪\(Int(fat.rounded()))g") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private func icon(for kind: CoachSuggestedRecordKind) -> String {

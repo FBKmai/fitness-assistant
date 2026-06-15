@@ -216,6 +216,13 @@ final class TrainingPlan {
         set { resultJSON = Self.encode(newValue) }
     }
 
+    /// 训练计划产出的目标缺口 = TDEE − 每日目标热量。供今日仪表盘与总结页对照达标线使用。
+    /// 与每日实际热量差（BMR + 活动 − 摄入）口径不同，仅作目标线。
+    var targetDailyDeficitKcal: Double {
+        guard let tdee = result?.tdee, tdee > 0 else { return 0 }
+        return max(0, tdee - dailyCalories)
+    }
+
     var macroEnergyTotal: Double {
         proteinGrams * 4 + carbsGrams * 4 + fatGrams * 9
     }

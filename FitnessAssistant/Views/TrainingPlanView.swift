@@ -105,11 +105,6 @@ struct TrainingPlanEditorView: View {
     @State private var extraNote: String
     // 结果
     @State private var result: TrainingPlanResult?
-    @State private var dailyCalories: String = ""
-    @State private var proteinGrams: String = ""
-    @State private var carbsGrams: String = ""
-    @State private var fatGrams: String = ""
-    @State private var summary: String = ""
     // 状态
     @State private var isSyncing = false
     @State private var isGenerating = false
@@ -126,11 +121,6 @@ struct TrainingPlanEditorView: View {
         case sleep
         case dietPreference
         case extraNote
-        case dailyCalories
-        case protein
-        case carbs
-        case fat
-        case summary
     }
 
     init(plan: TrainingPlan? = nil) {
@@ -150,13 +140,7 @@ struct TrainingPlanEditorView: View {
         _sleepHours = State(initialValue: Self.numberText(input?.sleepHours, decimals: 1))
         _dietPreference = State(initialValue: input?.dietPreference ?? "")
         _extraNote = State(initialValue: input?.extraNote ?? "")
-        let savedResult = plan?.result
-        _result = State(initialValue: savedResult)
-        _dailyCalories = State(initialValue: Self.numberText(savedResult?.dailyCalories, decimals: 0))
-        _proteinGrams = State(initialValue: Self.numberText(savedResult?.proteinGrams, decimals: 0))
-        _carbsGrams = State(initialValue: Self.numberText(savedResult?.carbsGrams, decimals: 0))
-        _fatGrams = State(initialValue: Self.numberText(savedResult?.fatGrams, decimals: 0))
-        _summary = State(initialValue: savedResult?.summary ?? "")
+        _result = State(initialValue: plan?.result)
     }
 
     private var profile: UserProfile? { profiles.first }
@@ -414,58 +398,27 @@ struct TrainingPlanEditorView: View {
             Section("每日热量与营养") {
                 LabeledContent("基础代谢 BMR", value: result.bmr.kcalText)
                 LabeledContent("总消耗 TDEE", value: result.tdee.kcalText)
-                TextField("每日目标热量 kcal", text: $dailyCalories)
-                    .keyboardType(.decimalPad)
-                    .focused($focusedField, equals: .dailyCalories)
-                TextField("蛋白质 g", text: $proteinGrams)
-                    .keyboardType(.decimalPad)
-                    .focused($focusedField, equals: .protein)
-                TextField("碳水 g", text: $carbsGrams)
-                    .keyboardType(.decimalPad)
-                    .focused($focusedField, equals: .carbs)
-                TextField("脂肪 g", text: $fatGrams)
-                    .keyboardType(.decimalPad)
-                    .focused($focusedField, equals: .fat)
+                LabeledContent("每日目标热量", value: result.dailyCalories.kcalText)
+                LabeledContent("目标缺口", value: max(0, result.tdee - result.dailyCalories).kcalText)
+                LabeledContent("蛋白质", value: "\(Int(result.proteinGrams.rounded())) g")
+                LabeledContent("碳水", value: "\(Int(result.carbsGrams.rounded())) g")
+                LabeledContent("脂肪", value: "\(Int(result.fatGrams.rounded())) g")
 
+                let ratio = macroRatio(result)
                 MacroRatioBar(
-                    proteinRatio: editedMacroRatio.protein,
-                    carbsRatio: editedMacroRatio.carbs,
-                    fatRatio: editedMacroRatio.fat
+                    proteinRatio: ratio.protein,
+                    carbsRatio: ratio.carbs,
+                    fatRatio: ratio.fat
                 )
                 HStack(spacing: 12) {
-                    MacroLabel(name: "蛋白", grams: proteinGrams.doubleValue ?? 0, color: .macroProtein)
-                    MacroLabel(name: "碳水", grams: carbsGrams.doubleValue ?? 0, color: .macroCarbs)
-                    MacroLabel(name: "脂肪", grams: fatGrams.doubleValue ?? 0, color: .macroFat)
+                    MacroLabel(name: "蛋白", grams: result.proteinGrams, color: .macroProtein)
+                    MacroLabel(name: "碳水", grams: result.carbsGrams, color: .macroCarbs)
+                    MacroLabel(name: "脂肪", grams: result.fatGrams, color: .macroFat)
                 }
                 if !result.macroNote.isEmpty {
                     Text(result.macroNote)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                }
-            }
-
-            if !result.weeklySchedule.isEmpty {
-                Section("每周训练安排") {
-                    WeeklyScheduleView(days: result.weeklySchedule)
-                }
-            }
-
-            if !result.trainingPrinciples.isEmpty {
-                Section("训练要点") {
-                    Text(result.trainingPrinciples)
-                        .font(.callout)
-                }
-            }
-
-            if !result.dietStructure.isEmpty || !result.mealExamples.isEmpty {
-                Section("饮食结构") {
-                    if !result.dietStructure.isEmpty {
-                        Text(result.dietStructure)
-                            .font(.callout)
-                    }
-                    ForEach(result.mealExamples) { meal in
-                        TrainingMealExampleRow(meal: meal)
-                    }
                 }
             }
 
@@ -475,20 +428,13 @@ struct TrainingPlanEditorView: View {
                         .font(.callout)
                 }
             }
-
-            Section("总结") {
-                placeholderEditor(text: $summary, placeholder: "一句话总结这份计划。", field: .summary)
-            }
         }
     }
 
-    private var editedMacroRatio: (protein: Double, carbs: Double, fat: Double) {
-        let p = proteinGrams.doubleValue ?? 0
-        let c = carbsGrams.doubleValue ?? 0
-        let f = fatGrams.doubleValue ?? 0
-        let total = p * 4 + c * 4 + f * 9
+    private func macroRatio(_ result: TrainingPlanResult) -> (protein: Double, carbs: Double, fat: Double) {
+        let total = result.proteinGrams * 4 + result.carbsGrams * 4 + result.fatGrams * 9
         guard total > 0 else { return (0, 0, 0) }
-        return (p * 4 / total, c * 4 / total, f * 9 / total)
+        return (result.proteinGrams * 4 / total, result.carbsGrams * 4 / total, result.fatGrams * 9 / total)
     }
 
     // MARK: 行为
@@ -550,11 +496,6 @@ struct TrainingPlanEditorView: View {
 
     private func applyResult(_ generated: TrainingPlanResult) {
         result = generated
-        dailyCalories = String(format: "%.0f", generated.dailyCalories)
-        proteinGrams = String(format: "%.0f", generated.proteinGrams)
-        carbsGrams = String(format: "%.0f", generated.carbsGrams)
-        fatGrams = String(format: "%.0f", generated.fatGrams)
-        summary = generated.summary
         if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             title = defaultTitle
         }
@@ -593,7 +534,7 @@ struct TrainingPlanEditorView: View {
     }
 
     private func save() {
-        guard var finalResult = result else {
+        guard let finalResult = result else {
             errorMessage = "请先生成训练计划"
             return
         }
@@ -601,12 +542,6 @@ struct TrainingPlanEditorView: View {
             errorMessage = "请先在「设置」完善个人资料"
             return
         }
-
-        finalResult.dailyCalories = dailyCalories.doubleValue ?? finalResult.dailyCalories
-        finalResult.proteinGrams = proteinGrams.doubleValue ?? finalResult.proteinGrams
-        finalResult.carbsGrams = carbsGrams.doubleValue ?? finalResult.carbsGrams
-        finalResult.fatGrams = fatGrams.doubleValue ?? finalResult.fatGrams
-        finalResult.summary = summary
 
         let input = buildInput(profile: profile)
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -714,88 +649,5 @@ struct TrainingPlanCard: View {
             }
         }
         .padding(.vertical, 6)
-    }
-}
-
-// MARK: - 每周训练安排（只读渲染）
-
-struct WeeklyScheduleView: View {
-    let days: [TrainingDayPlan]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(days) { day in
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text(day.dayLabel)
-                            .font(.subheadline.weight(.semibold))
-                        if !day.focus.isEmpty {
-                            Text(day.focus)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    ForEach(day.exercises) { exercise in
-                        HStack(alignment: .top, spacing: 6) {
-                            Image(systemName: "circle.fill")
-                                .font(.system(size: 5))
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 6)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(exercise.name)
-                                    .font(.callout)
-                                let detail = [exercise.sets, exercise.reps, exercise.note]
-                                    .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                                    .joined(separator: " · ")
-                                if !detail.isEmpty {
-                                    Text(detail)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                    if !day.cardio.isEmpty {
-                        Label(day.cardio, systemImage: "figure.walk")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !day.note.isEmpty {
-                        Text(day.note)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                if day.id != days.last?.id {
-                    Divider()
-                }
-            }
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-private struct TrainingMealExampleRow: View {
-    let meal: TrainingMealExample
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text(meal.title)
-                    .font(.subheadline.weight(.medium))
-                Spacer()
-                if meal.calories > 0 {
-                    Text(meal.calories.kcalText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            if !meal.content.isEmpty {
-                Text(meal.content)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 2)
     }
 }

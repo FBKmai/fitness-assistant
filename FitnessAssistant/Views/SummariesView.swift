@@ -101,6 +101,7 @@ private struct TrendChartsView: View {
     let summaries: [DailySummary]   // 时间正序
 
     @State private var metric: Metric = .deficit
+    @State private var selectedDate: Date?
 
     enum Metric: String, CaseIterable, Identifiable {
         case deficit = "缺口"
@@ -116,25 +117,128 @@ private struct TrendChartsView: View {
                 ForEach(Metric.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
+            .onChange(of: metric) { _, _ in selectedDate = nil }
+
+            valuesHeader
 
             chart
-                .frame(height: 200)
+                .frame(height: 210)
                 .animation(.default, value: metric)
         }
+    }
+
+    /// 当前选中（点按图表）或默认最近一天，用于表头精确数值。
+    private var activeSummary: DailySummary? {
+        if let selectedDate {
+            return summaries.min {
+                abs($0.date.timeIntervalSince(selectedDate)) < abs($1.date.timeIntervalSince(selectedDate))
+            }
+        }
+        return summaries.last
+    }
+
+    /// 最近一次设置的目标缺口（>0），用于缺口图的目标线。
+    private var targetDeficit: Double {
+        summaries.reversed().compactMap { $0.snapshot?.targetDailyDeficitKcal }.first { $0 > 0 } ?? 0
+    }
+
+    @ViewBuilder
+    private var valuesHeader: some View {
+        if let summary = activeSummary {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Label(
+                        selectedDate == nil ? "最近 · \(trendDayFormatter.string(from: summary.date))" : trendDayFormatter.string(from: summary.date),
+                        systemImage: selectedDate == nil ? "clock.arrow.circlepath" : "hand.tap"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    Spacer()
+                    if selectedDate != nil {
+                        Button("看最近") { selectedDate = nil }
+                            .font(.caption)
+                    }
+                }
+                headerValues(for: summary)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cardCornerRadius))
+        }
+    }
+
+    @ViewBuilder
+    private func headerValues(for summary: DailySummary) -> some View {
+        switch metric {
+        case .deficit:
+            HStack(spacing: 18) {
+                metricValue("缺口", summary.calorieDeficit.signedKcalText, color: deficitReached(summary) ? .deficitReached : .deficitShort)
+                if targetDeficit > 0 {
+                    metricValue("目标", "\(Int(targetDeficit)) kcal")
+                }
+            }
+        case .energy:
+            HStack(spacing: 18) {
+                metricValue("摄入", summary.intakeCalories.kcalText)
+                metricValue("消耗", summary.totalBurnCalories.kcalText)
+                metricValue("净", summary.calorieDeficit.signedKcalText)
+            }
+        case .weight:
+            metricValue("体重", summary.weightKg > 0 ? String(format: "%.1f kg", summary.weightKg) : "—")
+        case .macros:
+            HStack(spacing: 18) {
+                metricValue("蛋白", "\(Int(summary.proteinGrams)) g", color: .macroProtein)
+                metricValue("碳水", "\(Int(summary.carbsGrams)) g", color: .macroCarbs)
+                metricValue("脂肪", "\(Int(summary.fatGrams)) g", color: .macroFat)
+            }
+        }
+    }
+
+    private func metricValue(_ title: String, _ value: String, color: Color = .primary) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(color)
+        }
+    }
+
+    /// 选中某天时高亮该天，未选中为全亮。
+    private func barOpacity(_ summary: DailySummary) -> Double {
+        guard selectedDate != nil, let active = activeSummary else { return 1 }
+        return Calendar.current.isDate(summary.date, inSameDayAs: active.date) ? 1 : 0.3
     }
 
     @ViewBuilder
     private var chart: some View {
         switch metric {
         case .deficit:
-            Chart(summaries) { summary in
-                BarMark(
-                    x: .value("日期", summary.date, unit: .day),
-                    y: .value("缺口", summary.calorieDeficit)
-                )
-                .foregroundStyle(deficitReached(summary) ? Color.deficitReached : Color.deficitShort)
+            Chart {
+                ForEach(summaries) { summary in
+                    BarMark(
+                        x: .value("日期", summary.date, unit: .day),
+                        y: .value("缺口", summary.calorieDeficit)
+                    )
+                    .foregroundStyle(deficitReached(summary) ? Color.deficitReached : Color.deficitShort)
+                    .opacity(barOpacity(summary))
+                }
+                if targetDeficit > 0 {
+                    RuleMark(y: .value("目标", targetDeficit))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                        .foregroundStyle(.secondary)
+                        .annotation(position: .top, alignment: .trailing) {
+                            Text("目标 \(Int(targetDeficit))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                }
             }
+            .chartYAxis { valueAxis }
             .chartXAxis { dateAxis }
+            .chartXSelection(value: $selectedDate)
 
         case .energy:
             Chart {
@@ -154,8 +258,11 @@ private struct TrendChartsView: View {
                     .foregroundStyle(by: .value("类型", "消耗"))
                     .symbol(by: .value("类型", "消耗"))
                 }
+                selectionRule
             }
+            .chartYAxis { valueAxis }
             .chartXAxis { dateAxis }
+            .chartXSelection(value: $selectedDate)
 
         case .weight:
             let points = summaries.filter { $0.weightKg > 0 }
@@ -166,19 +273,24 @@ private struct TrendChartsView: View {
                     description: Text("生成几天建议、且健康里有体重记录后，这里会显示体重趋势。")
                 )
             } else {
-                Chart(points) { summary in
-                    LineMark(
-                        x: .value("日期", summary.date, unit: .day),
-                        y: .value("kg", summary.weightKg)
-                    )
-                    .interpolationMethod(.catmullRom)
-                    PointMark(
-                        x: .value("日期", summary.date, unit: .day),
-                        y: .value("kg", summary.weightKg)
-                    )
+                Chart {
+                    ForEach(points) { summary in
+                        LineMark(
+                            x: .value("日期", summary.date, unit: .day),
+                            y: .value("kg", summary.weightKg)
+                        )
+                        .interpolationMethod(.catmullRom)
+                        PointMark(
+                            x: .value("日期", summary.date, unit: .day),
+                            y: .value("kg", summary.weightKg)
+                        )
+                    }
+                    selectionRule
                 }
                 .chartYScale(domain: .automatic(includesZero: false))
+                .chartYAxis { valueAxis }
                 .chartXAxis { dateAxis }
+                .chartXSelection(value: $selectedDate)
             }
 
         case .macros:
@@ -189,19 +301,50 @@ private struct TrendChartsView: View {
                         y: .value("克", summary.proteinGrams)
                     )
                     .foregroundStyle(by: .value("营养", "蛋白质"))
+                    .position(by: .value("营养", "蛋白质"))
+                    .opacity(barOpacity(summary))
                     BarMark(
                         x: .value("日期", summary.date, unit: .day),
                         y: .value("克", summary.carbsGrams)
                     )
                     .foregroundStyle(by: .value("营养", "碳水"))
+                    .position(by: .value("营养", "碳水"))
+                    .opacity(barOpacity(summary))
                     BarMark(
                         x: .value("日期", summary.date, unit: .day),
                         y: .value("克", summary.fatGrams)
                     )
                     .foregroundStyle(by: .value("营养", "脂肪"))
+                    .position(by: .value("营养", "脂肪"))
+                    .opacity(barOpacity(summary))
                 }
             }
+            .chartForegroundStyleScale([
+                "蛋白质": Color.macroProtein,
+                "碳水": Color.macroCarbs,
+                "脂肪": Color.macroFat
+            ])
+            .chartLegend(position: .top, alignment: .leading)
+            .chartYAxis { valueAxis }
             .chartXAxis { dateAxis }
+            .chartXSelection(value: $selectedDate)
+        }
+    }
+
+    /// 选中日期的竖向高亮线（用于折线图）。未选中时不绘制，避免污染坐标轴范围。
+    @ChartContentBuilder
+    private var selectionRule: some ChartContent {
+        if selectedDate != nil, let active = activeSummary {
+            RuleMark(x: .value("日期", active.date, unit: .day))
+                .foregroundStyle(Color.secondary.opacity(0.3))
+        }
+    }
+
+    private var valueAxis: some AxisContent {
+        AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { _ in
+            AxisGridLine()
+            AxisTick()
+            AxisValueLabel()
         }
     }
 

@@ -381,7 +381,10 @@ final class AIClient: ObservableObject {
         - 不要极端节食，不要建议用过量运动抵消饮食。
         - 体重短期上涨时优先解释水分、钠、糖原、食物残渣和炎症锁水，不制造焦虑。
         - 建议必须具体到食物组合、份量范围、训练强度或下一步动作。
-        - 如果用户明显是在记录“刚吃了/刚练完/今早体重/睡眠/喝水”，在 suggestedRecords 里给出可保存记录。
+        - 当用户问“吃什么/这一餐怎么吃/现在怎么吃/点什么外卖”时：context.foodOptions 里的食物选项只是参考，可以从中挑，也可以另行推荐任何更合适的食物或搭配，不要局限于这些选项。
+        - 给“吃什么”建议时，必须结合今日和最近的活动消耗（today.activeCalories、recentExercises）与热量缺口（today.calorieDeficit、recent7Days 趋势）来决定份量和热量，并在 replyText 里说明你是基于哪些活动/热量数据给的。
+        - 推荐具体食物或搭配时，把每个推荐放进 suggestedRecords（kind=meal，填 textDescription 与 totalCalories/proteinGrams/carbsGrams/fatGrams），方便用户一键采纳保存为饮食记录；这既适用于“刚吃了”的记录，也适用于“建议吃”的推荐。
+        - 如果用户明显是在记录“刚练完/今早体重/睡眠/喝水”，在 suggestedRecords 里给出对应的可保存记录。
         - 只有当信息稳定、未来也有用时，才写 memoryPatch，比如常吃食物、忌口、训练偏好、健康注意点。
         - 只返回 JSON，不要使用 markdown。
 
