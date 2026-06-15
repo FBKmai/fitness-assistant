@@ -50,6 +50,8 @@
 		FA200000000000000000001D /* CalorieCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000021 /* CalorieCalculatorTests.swift */; };
 		FA200000000000000000001E /* CSVExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000022 /* CSVExporterTests.swift */; };
 		FA200000000000000000001F /* AIResponseParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000023 /* AIResponseParserTests.swift */; };
+		FA20000000000000000000A0 /* AppLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA10000000000000000000A0 /* AppLogStore.swift */; };
+		FA20000000000000000000A1 /* DebugLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA10000000000000000000A1 /* DebugLogView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -110,6 +112,8 @@
 		FA1000000000000000000023 /* AIResponseParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIResponseParserTests.swift; sourceTree = "<group>"; };
 		FA100000000000000000002E /* CoachContextBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachContextBuilderTests.swift; sourceTree = "<group>"; };
 		FA100000000000000000002F /* CoachReplyResultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachReplyResultTests.swift; sourceTree = "<group>"; };
+		FA10000000000000000000A0 /* AppLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogStore.swift; sourceTree = "<group>"; };
+		FA10000000000000000000A1 /* DebugLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -210,6 +214,7 @@
 				FA100000000000000000000E /* ImageStorage.swift */,
 				FA100000000000000000000F /* CSVExporter.swift */,
 				FA1000000000000000000010 /* DateHelpers.swift */,
+				FA10000000000000000000A0 /* AppLogStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -230,6 +235,7 @@
 				FA100000000000000000002D /* FoodHubView.swift */,
 				FA1000000000000000000028 /* TrainingPlanView.swift */,
 				FA1000000000000000000029 /* DietCoachView.swift */,
+				FA10000000000000000000A1 /* DebugLogView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -397,6 +403,8 @@
 				FA2000000000000000000029 /* FoodHubView.swift in Sources */,
 				FA2000000000000000000024 /* TrainingPlanView.swift in Sources */,
 				FA2000000000000000000025 /* DietCoachView.swift in Sources */,
+				FA20000000000000000000A0 /* AppLogStore.swift in Sources */,
+				FA20000000000000000000A1 /* DebugLogView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
