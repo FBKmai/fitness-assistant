@@ -461,11 +461,21 @@ final class AIClient: ObservableObject {
             maxTokens: 4000
         )
 
-        var result = try AIResponseParser.decodeJSONObject(CoachReplyResult.self, from: content)
-        if result.replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            result.replyText = "AI 返回了空回复，请补充问题后重试。"
+        do {
+            var result = try AIResponseParser.decodeJSONObject(CoachReplyResult.self, from: content)
+            if result.replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                result.replyText = "AI 返回了空回复，请补充问题后重试。"
+            }
+            return result
+        } catch {
+            // 模型偶尔会把结构化 JSON 输出截断（典型报错 Unexpected end of file），
+            // 这种情况下尽量从原文抢救出回答正文展示，避免整条对话失败（这仍是 AI 自己的回答）。
+            guard let salvaged = AIResponseParser.salvageReplyText(from: content) else {
+                throw error
+            }
+            AppLog.warning("教练回复 JSON 不完整，已抢救正文展示（原始 \(content.count) 字符）", category: "AI解析")
+            return CoachReplyResult(replyText: salvaged)
         }
-        return result
     }
 
     func testConnection(settings: AISettings) async throws -> String {
