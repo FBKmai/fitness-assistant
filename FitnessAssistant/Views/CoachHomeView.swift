@@ -59,6 +59,18 @@ struct CoachHomeView: View {
             && aiSettings != nil
     }
 
+    /// 目标缺口优先取最新训练计划算出的缺口（TDEE − 每日目标热量），与「今日」页同口径。
+    private var deficitTarget: Double {
+        if let planTarget = trainingPlans.first?.targetDailyDeficitKcal, planTarget > 0 {
+            return planTarget
+        }
+        return profile?.targetDailyDeficitKcal ?? 0
+    }
+
+    private func deficitTint(_ deficit: Double) -> Color {
+        deficitTarget > 0 && deficit >= deficitTarget ? .deficitReached : .deficitShort
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -104,6 +116,7 @@ struct CoachHomeView: View {
                     .onChange(of: isLoading) { _, _ in
                         withAnimation { proxy.scrollTo(bottomID, anchor: .bottom) }
                     }
+                    .background(Color(.systemGroupedBackground))
                 }
 
                 inputBar
@@ -127,36 +140,45 @@ struct CoachHomeView: View {
         }
     }
 
+    @ViewBuilder
     private var statusCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let context = currentContext {
+        if let context = currentContext {
+            let deficit = context.today.calorieDeficit
+            let tint = deficitTint(deficit)
+            VStack(alignment: .leading, spacing: AppMetrics.tileSpacing) {
                 HStack(spacing: AppMetrics.tileSpacing) {
                     MetricTile(title: "摄入", value: context.today.intakeCalories.kcalValue, systemImage: "fork.knife")
-                    MetricTile(title: "热量差", value: context.today.calorieDeficit.signedKcalValue, systemImage: "plusminus", highlighted: true)
+                    MetricTile(title: "热量差", value: deficit.signedKcalValue, systemImage: "plusminus", highlighted: true, tint: tint)
                 }
                 HStack(spacing: AppMetrics.tileSpacing) {
-                    MetricTile(title: "蛋白", value: "\(Int(context.today.proteinGrams.rounded()))", unit: "g", systemImage: "circle.hexagongrid")
                     MetricTile(title: "活动", value: context.today.activeCalories.kcalValue, systemImage: "flame")
+                    MetricTile(title: "基础", value: context.today.restingCalories.kcalValue, systemImage: "bed.double")
                 }
-                if let sleep = context.today.sleepHours {
-                    Label("睡眠 \(String(format: "%.1f", sleep)) 小时", systemImage: "bed.double")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                if deficitTarget > 0 {
+                    MetricProgressBar(title: "距每日缺口目标 \(Int(deficitTarget)) kcal", current: deficit, target: deficitTarget, tint: tint)
+                        .padding(.top, 2)
                 }
+                HStack(spacing: 14) {
+                    Label("蛋白 \(Int(context.today.proteinGrams.rounded())) g", systemImage: "circle.hexagongrid")
+                    if let sleep = context.today.sleepHours {
+                        Label("睡眠 \(String(format: "%.1f", sleep)) 小时", systemImage: "moon.zzz")
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 if !context.today.symptoms.isEmpty {
                     Label(context.today.symptoms, systemImage: "cross.case")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
-            } else {
-                Text("请先完成资料设置。")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             }
+        } else {
+            Text("请先完成资料设置。")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
         }
-        .padding(10)
-        .background(Color.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cardCornerRadius))
     }
 
     private var quickActions: some View {
