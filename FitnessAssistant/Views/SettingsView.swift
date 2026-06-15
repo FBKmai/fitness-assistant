@@ -281,6 +281,7 @@ struct SettingsView: View {
             }
             setMessage("已保存", isError: false)
         } catch {
+            AppLog.error("保存设置失败：\(error.localizedDescription)", category: "设置")
             setMessage(error.localizedDescription, isError: true)
         }
     }
@@ -349,6 +350,7 @@ struct SettingsView: View {
             try await healthKitService.requestAuthorization()
             setMessage("已请求健康权限", isError: false)
         } catch {
+            AppLog.error("请求健康权限失败：\(error.localizedDescription)", category: "设置")
             setMessage(error.localizedDescription, isError: true)
         }
     }
@@ -362,6 +364,7 @@ struct SettingsView: View {
             await refreshNotificationStatus()
             setMessage("已更新称重和晚间提醒", isError: false)
         } catch {
+            AppLog.error("更新提醒失败：\(error.localizedDescription)", category: "设置")
             setMessage(error.localizedDescription, isError: true)
         }
     }
@@ -381,6 +384,7 @@ struct SettingsView: View {
             showingShare = true
             setMessage("已生成 CSV", isError: false)
         } catch {
+            AppLog.error("导出 CSV 失败：\(error.localizedDescription)", category: "设置")
             setMessage(error.localizedDescription, isError: true)
         }
     }

@@ -242,6 +242,7 @@ struct ManualExerciseEditorView: View {
             try modelContext.save()
             dismiss()
         } catch {
+            AppLog.error("保存运动记录失败：\(error.localizedDescription)", category: "运动")
             errorMessage = error.localizedDescription
         }
     }

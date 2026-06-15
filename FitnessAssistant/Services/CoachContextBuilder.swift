@@ -165,34 +165,6 @@ enum CoachContextBuilder {
         )
     }
 
-    static func fallbackReply(for context: CoachContextSnapshot, error: Error?) -> CoachReplyResult {
-        let proteinGap = max(0, context.analysis.proteinTargetLowerGrams - context.today.proteinGrams)
-        var lines = [
-            "\(context.analysis.energyStatus)：\(context.analysis.energyMessage)"
-        ]
-        if proteinGap > 0 {
-            lines.append("蛋白质还差约 \(Int(proteinGap.rounded()))g，下一餐优先补鸡蛋、牛肉、鱼虾、鸡胸或豆制品。")
-        }
-        if !context.analysis.nextActions.isEmpty {
-            lines.append(context.analysis.nextActions.joined(separator: "；"))
-        }
-        if !context.today.symptoms.isEmpty {
-            lines.append("今天记录了身体不适：\(context.today.symptoms)。训练建议保守，避免高心率和大重量。")
-        }
-        if let sleep = context.today.sleepHours, sleep < 6 {
-            lines.append("睡眠不足 6 小时，今天优先恢复和稳定饮食，不建议硬冲极限训练。")
-        }
-        if let error {
-            lines.append("AI 暂时不可用，以上为本地规则兜底建议：\(error.localizedDescription)")
-        }
-        return CoachReplyResult(
-            replyText: lines.joined(separator: "\n\n"),
-            scenario: .general,
-            suggestedRecords: [],
-            riskLevel: context.analysis.dataQualityScore < 0.65 ? "caution" : "normal"
-        )
-    }
-
     private static func mealSnapshot(_ meal: MealEntry) -> CoachMealSnapshot {
         CoachMealSnapshot(
             id: meal.id,

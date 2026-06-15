@@ -218,6 +218,7 @@ struct OnboardingView: View {
             try? await notificationScheduler.requestAuthorization()
             try? await notificationScheduler.scheduleDailyReminders(profile: profile)
         } catch {
+            AppLog.error("引导页保存资料失败：\(error.localizedDescription)", category: "引导")
             errorMessage = error.localizedDescription
         }
     }

@@ -523,6 +523,7 @@ struct MealEditorView: View {
                     imageDataList.append(compressed)
                 }
             } catch {
+                AppLog.error("读取照片失败：\(error.localizedDescription)", category: "饮食")
                 errorMessage = error.localizedDescription
             }
         }
@@ -595,6 +596,7 @@ struct MealEditorView: View {
                 textDescription = estimate.summary
             }
         } catch {
+            AppLog.error("识别餐食失败：\(error.localizedDescription)", category: "饮食")
             errorMessage = error.localizedDescription
         }
     }
@@ -661,6 +663,7 @@ struct MealEditorView: View {
             await generateAndArchiveAdvice(for: savedMeal)
             dismiss()
         } catch {
+            AppLog.error("保存饮食记录失败：\(error.localizedDescription)", category: "饮食")
             errorMessage = error.localizedDescription
         }
     }
@@ -728,17 +731,17 @@ struct MealEditorView: View {
     @MainActor
     private func generateAndArchiveAdvice(for meal: MealEntry) async {
         guard let profile = profiles.first else { return }
+        guard let aiSettings = settings.first else {
+            AppLog.error("生成餐食建议失败：尚未配置 AI（AISettings 为空）", category: "AI餐食建议")
+            return
+        }
         let snapshot = buildMealAdviceSnapshot(for: meal, profile: profile)
         let response: MealAdviceResponse
-
-        if let aiSettings = settings.first {
-            do {
-                response = try await aiClient.generateMealAdvice(snapshot: snapshot, settings: aiSettings)
-            } catch {
-                response = fallbackMealAdvice(snapshot: snapshot, error: error)
-            }
-        } else {
-            response = fallbackMealAdvice(snapshot: snapshot, error: nil)
+        do {
+            response = try await aiClient.generateMealAdvice(snapshot: snapshot, settings: aiSettings)
+        } catch {
+            AppLog.error("生成餐食建议失败：\(error.localizedDescription)", category: "AI餐食建议")
+            return
         }
 
         modelContext.insert(MealAdviceRecord(
@@ -836,17 +839,6 @@ struct MealEditorView: View {
             weightKg: weightKg,
             analysis: dailySnapshot.analysis ?? FatLossAnalyzer.analyze(snapshot: dailySnapshot)
         )
-    }
-
-    private func fallbackMealAdvice(snapshot: MealAdviceSnapshot, error: Error?) -> MealAdviceResponse {
-        let proteinGap = max(0, snapshot.analysis.proteinTargetLowerGrams - snapshot.todayProteinGrams)
-        let review = "\(snapshot.mealType)记录为 \(Int(snapshot.mealCalories.rounded())) kcal。当前今日热量差约 \(Int(snapshot.todayCalorieDeficit.rounded())) kcal，\(snapshot.analysis.energyMessage)"
-        let next = proteinGap > 20
-            ? "下一顿优先补蛋白：一份鱼虾/鸡胸/瘦肉/豆腐 + 2 拳蔬菜，按运动量加半碗到一碗主食。"
-            : "下一顿保持均衡：一份优质蛋白 + 2 拳蔬菜 + 适量主食，少油少酱。"
-        let snack = "零嘴控制在 100-200 kcal，优先无糖酸奶、牛奶、水果、茶叶蛋或少量坚果。"
-        let caution = error.map { "AI 暂时不可用，使用本地规则评价：\($0.localizedDescription)" } ?? "使用本地规则评价。"
-        return MealAdviceResponse(mealReview: review, nextMealAdvice: next, snackAdvice: snack, caution: caution)
     }
 
     /// 把可选的数值格式化为输入框文本：nil 或 0 时返回空串，避免新增时预填 "0"。

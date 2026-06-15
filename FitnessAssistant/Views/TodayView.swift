@@ -263,6 +263,7 @@ struct TodayView: View {
             statusMessage = "今日体重已保存，正在刷新建议..."
             Task { await syncAndGenerateSummary(silent: true) }
         } catch {
+            AppLog.error("保存今日体重失败：\(error.localizedDescription)", category: "今日")
             statusMessage = error.localizedDescription
         }
     }
@@ -298,6 +299,7 @@ struct TodayView: View {
                     : "Apple 健康今天还没有体脂秤数据，可先手动保存体重。"
             }
         } catch {
+            AppLog.error("同步 Apple 健康数据失败：\(error.localizedDescription)", category: "今日")
             if !silent {
                 statusMessage = error.localizedDescription
             }
@@ -324,6 +326,7 @@ struct TodayView: View {
             try modelContext.save()
             statusMessage = "已更新 \(DateFormatter.shortTime.string(from: .now))"
         } catch {
+            AppLog.error("同步并生成今日总结失败：\(error.localizedDescription)", category: "今日")
             statusMessage = error.localizedDescription
         }
     }

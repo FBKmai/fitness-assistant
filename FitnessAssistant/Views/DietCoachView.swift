@@ -197,8 +197,8 @@ struct DietCoachView: View {
             let reply = try await aiClient.generateDietCoachReply(context: context, history: history, settings: settings)
             history.append(DietCoachTurn(role: .assistant, text: reply.isEmpty ? "（AI 没有返回内容，请重试）" : reply))
         } catch {
-            errorMessage = "AI 暂时不可用，已给出本地规则建议：\(error.localizedDescription)"
-            history.append(DietCoachTurn(role: .assistant, text: fallbackText(context: context)))
+            AppLog.error("饮食教练回复失败：\(error.localizedDescription)", category: "AI饮食教练")
+            errorMessage = "AI 暂时不可用：\(error.localizedDescription)"
         }
     }
 
@@ -377,21 +377,6 @@ struct DietCoachView: View {
         return snapshot
     }
 
-    private func fallbackText(context: DietCoachSnapshot) -> String {
-        let analysis = context.analysis
-        let proteinGap = max(0, analysis.proteinTargetLowerGrams - context.proteinGrams)
-        let selectedOptionText = context.selectedFoodOptions
-            .sorted { $0.recommendationScore > $1.recommendationScore }
-            .map { "\($0.name)(\($0.totalCalories.kcalText)，推荐\(Int($0.recommendationScore.rounded())))" }
-            .joined(separator: "、")
-        let base = proteinGap > 20
-            ? "这一餐优先补蛋白：选择一份瘦肉、鱼虾、鸡蛋、豆腐或无糖酸奶，搭配 2 拳蔬菜，再按饥饿感加半碗到一碗主食，少油烹饪。"
-            : "这一餐保持清爽均衡：一份优质蛋白 + 2 拳蔬菜 + 半碗左右主食，少油烹饪。"
-        let optionPart = selectedOptionText.isEmpty
-            ? ""
-            : "\n\n你勾选的候选：\(selectedOptionText)。优先选推荐指数高、蛋白更足、油脂更低的；热量偏高时减少主食或酱料。"
-        return "\(base)\(optionPart)\n\n（这是本地规则建议，AI 恢复后可以生成更贴合的版本。）"
-    }
 }
 
 // MARK: - 对话气泡

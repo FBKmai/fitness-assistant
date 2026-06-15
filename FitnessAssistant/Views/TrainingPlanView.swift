@@ -466,6 +466,7 @@ struct TrainingPlanEditorView: View {
                 errorMessage = "Apple 健康暂无体重/体脂/BMI 数据，可手动填写。"
             }
         } catch {
+            AppLog.error("读取 Apple 健康身体数据失败：\(error.localizedDescription)", category: "训练计划")
             errorMessage = error.localizedDescription
         }
     }
@@ -490,6 +491,7 @@ struct TrainingPlanEditorView: View {
             let generated = try await aiClient.generateTrainingPlan(input: input, settings: aiSettings)
             applyResult(generated)
         } catch {
+            AppLog.error("生成训练计划失败：\(error.localizedDescription)", category: "训练计划")
             errorMessage = error.localizedDescription
         }
     }
@@ -578,6 +580,7 @@ struct TrainingPlanEditorView: View {
             try modelContext.save()
             dismiss()
         } catch {
+            AppLog.error("保存训练计划失败：\(error.localizedDescription)", category: "训练计划")
             errorMessage = "保存训练计划失败：\(error.localizedDescription)"
         }
     }

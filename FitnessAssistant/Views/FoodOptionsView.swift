@@ -448,6 +448,7 @@ struct FoodOptionEditorView: View {
                     imageDataList.append(compressed)
                 }
             } catch {
+                AppLog.error("读取照片失败：\(error.localizedDescription)", category: "食物选项")
                 errorMessage = "读取照片失败：\(error.localizedDescription)"
             }
         }
@@ -499,6 +500,7 @@ struct FoodOptionEditorView: View {
             aiSummary = estimate.summary
             components = estimate.components
         } catch {
+            AppLog.error("识别食物选项失败：\(error.localizedDescription)", category: "食物选项")
             errorMessage = error.localizedDescription
         }
     }
@@ -560,6 +562,7 @@ struct FoodOptionEditorView: View {
             try modelContext.save()
             dismiss()
         } catch {
+            AppLog.error("保存食物选项卡失败：\(error.localizedDescription)", category: "食物选项")
             errorMessage = "保存选项卡失败：\(error.localizedDescription)"
         }
     }

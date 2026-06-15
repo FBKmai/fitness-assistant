@@ -42,6 +42,10 @@ struct MainTabView: View {
             SettingsView()
                 .tabItem { Label("设置", systemImage: "gearshape") }
                 .tag(5)
+
+            DebugLogView()
+                .tabItem { Label("调试", systemImage: "ladybug") }
+                .tag(6)
         }
     }
 }

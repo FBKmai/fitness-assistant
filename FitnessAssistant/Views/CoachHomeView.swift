@@ -351,9 +351,8 @@ struct CoachHomeView: View {
             imageDataList = []
             photoItems = []
         } catch {
-            let result = CoachContextBuilder.fallbackReply(for: context, error: error)
-            errorMessage = "AI 暂时不可用，已使用本地规则兜底。"
-            insertAssistantMessage(result, context: context, session: activeSession)
+            AppLog.error("教练回复失败：\(error.localizedDescription)", category: "AI教练")
+            errorMessage = "AI 暂时不可用：\(error.localizedDescription)"
         }
     }
 
@@ -441,19 +440,31 @@ private struct CoachChatBubble: View {
                 assistantHeader
             }
 
-            Text(message.text)
+            Text(attributedText)
                 .font(.body)
                 .textSelection(.enabled)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(12)
                 .background(message.role == .user ? Color.accentColor.opacity(0.16) : Color.cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cardCornerRadius))
-                .frame(maxWidth: message.role == .user ? 300 : .infinity, alignment: .leading)
 
             if message.role == .assistant, !message.suggestedRecords.isEmpty {
                 suggestedRecordsView
             }
         }
         .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
+    }
+
+    /// 教练正文用 Markdown 渲染（保留换行），让加粗、分点等格式正常显示；解析失败则原样展示。
+    private var attributedText: AttributedString {
+        if let attributed = try? AttributedString(
+            markdown: message.text,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        ) {
+            return attributed
+        }
+        return AttributedString(message.text)
     }
 
     private var assistantHeader: some View {

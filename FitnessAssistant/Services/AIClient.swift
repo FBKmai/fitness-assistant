@@ -458,7 +458,7 @@ final class AIClient: ObservableObject {
             messages: messages,
             temperature: 0.45,
             jsonMode: true,
-            maxTokens: 2600
+            maxTokens: 4000
         )
 
         var result = try AIResponseParser.decodeJSONObject(CoachReplyResult.self, from: content)
@@ -636,15 +636,19 @@ final class AIClient: ObservableObject {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            throw AIClientError.transport(Self.transportMessage(for: error))
+            let message = Self.transportMessage(for: error)
+            AppLog.error("请求失败（model=\(model)，url=\(url.absoluteString)）：\(message)", category: "AI网络")
+            throw AIClientError.transport(message)
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
+            AppLog.error("请求失败（model=\(model)）：收到非 HTTP 响应。", category: "AI网络")
             throw AIClientError.emptyResponse
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
+            AppLog.error("HTTP \(httpResponse.statusCode)（model=\(model)）：\(body)", category: "AI网络")
             throw AIClientError.invalidResponse(httpResponse.statusCode, body)
         }
 
@@ -655,8 +659,10 @@ final class AIClient: ObservableObject {
         }
         // 正文为空但有思考内容：模型仍在思考模式且回复被 token 上限截断在推理阶段。
         if let reasoning = message?.reasoningContent, !reasoning.isEmpty {
+            AppLog.error("AI 只返回思考内容、无正文（model=\(model)），疑似 thinking 模式被 token 上限截断。", category: "AI网络")
             throw AIClientError.transport("AI 只返回了思考内容、没有正式回答，通常是模型处于思考(thinking)模式且回复被 token 上限截断，请调大 token 上限或确认模型后重试。")
         }
+        AppLog.error("AI 返回空内容（model=\(model)）。", category: "AI网络")
         throw AIClientError.emptyResponse
     }
 
