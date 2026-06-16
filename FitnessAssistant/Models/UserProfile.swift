@@ -7,9 +7,10 @@ final class UserProfile {
     var heightCm: Double
     var currentWeightKg: Double
     /// 减脂起点体重；0 表示未设置（回退到当前体重）。
-    var initialWeightKg: Double
+    /// 注意：属性级默认值是 SwiftData 对老数据做轻量迁移的必要条件，不能省略。
+    var initialWeightKg: Double = 0
     /// 目标体重；0 表示未设置。
-    var targetWeightKg: Double
+    var targetWeightKg: Double = 0
     var genderRaw: String
     var birthday: Date
     var goalRaw: String
