@@ -18,6 +18,7 @@ struct FitnessAssistantApp: App {
             AISettings.self,
             TrainingPlan.self,
             DailyCheckIn.self,
+            DayLog.self,
             CoachChatSession.self,
             CoachChatMessage.self,
             CoachMemory.self

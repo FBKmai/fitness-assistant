@@ -149,8 +149,7 @@ struct MealEditorView: View {
     @Query private var profiles: [UserProfile]
     @Query(sort: \MealEntry.date, order: .reverse) private var mealHistory: [MealEntry]
     @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
-    @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
-    @Query(sort: \DailyCheckIn.date, order: .reverse) private var checkIns: [DailyCheckIn]
+    @Query(sort: \DayLog.date, order: .reverse) private var dayLogs: [DayLog]
     @Query(sort: \TrainingPlan.updatedAt, order: .reverse) private var trainingPlans: [TrainingPlan]
     @Query(sort: \FoodOption.updatedAt, order: .reverse) private var foodOptions: [FoodOption]
 
@@ -785,8 +784,7 @@ struct MealEditorView: View {
             profile: profile,
             meals: allMeals,
             exercises: exercises,
-            summaries: summaries,
-            checkIns: checkIns,
+            dayLogs: dayLogs,
             trainingPlans: trainingPlans
         )
 

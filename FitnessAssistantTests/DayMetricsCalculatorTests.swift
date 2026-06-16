@@ -2,7 +2,7 @@ import XCTest
 @testable import FitnessAssistant
 
 /// `DayMetricsCalculator` 是数据重构后的唯一聚合源，这里覆盖最关键的不变量：
-/// 活动消耗去重、体重回退链、目标缺口口径、摄入合计。
+/// 活动消耗去重、体重单源、目标缺口口径、摄入合计。
 final class DayMetricsCalculatorTests: XCTestCase {
 
     private func makeProfile() -> UserProfile {
@@ -26,7 +26,7 @@ final class DayMetricsCalculatorTests: XCTestCase {
         ]
         let metrics = DayMetricsCalculator.metrics(
             for: now, profile: profile, meals: [], exercises: exercises,
-            summaries: [], checkIns: [], trainingPlans: []
+            dayLogs: [], trainingPlans: []
         )
         XCTAssertEqual(metrics.healthActiveCalories, 400, accuracy: 0.001)
         XCTAssertEqual(metrics.manualActiveCalories, 100, accuracy: 0.001)
@@ -34,15 +34,14 @@ final class DayMetricsCalculatorTests: XCTestCase {
         XCTAssertEqual(metrics.activeCalories, 500, accuracy: 0.001)
     }
 
-    /// 体重统一回退链：当天打卡优先于当天总结。
-    func testWeightFallbackPrefersTodayCheckInOverSummary() {
+    /// 体重单源：来自当天 DayLog。
+    func testWeightComesFromTodayDayLog() {
         let now = Date()
         let profile = makeProfile()
-        let checkIn = DailyCheckIn(date: now, weightKg: 70)
-        let summary = DailySummary(date: now, weightKg: 71)
+        let log = DayLog(date: now, weightKg: 70)
         let metrics = DayMetricsCalculator.metrics(
             for: now, profile: profile, meals: [], exercises: [],
-            summaries: [summary], checkIns: [checkIn], trainingPlans: []
+            dayLogs: [log], trainingPlans: []
         )
         XCTAssertEqual(metrics.weightKg ?? 0, 70, accuracy: 0.001)
     }
@@ -64,7 +63,7 @@ final class DayMetricsCalculatorTests: XCTestCase {
         ]
         let metrics = DayMetricsCalculator.metrics(
             for: now, profile: profile, meals: meals, exercises: [],
-            summaries: [], checkIns: [], trainingPlans: []
+            dayLogs: [], trainingPlans: []
         )
         XCTAssertEqual(metrics.intakeCalories, 800, accuracy: 0.001)
         XCTAssertEqual(metrics.proteinGrams, 50, accuracy: 0.001)

@@ -63,8 +63,7 @@ struct FoodHubView: View {
     @Query private var profiles: [UserProfile]
     @Query(sort: \MealEntry.date, order: .reverse) private var meals: [MealEntry]
     @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
-    @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
-    @Query(sort: \DailyCheckIn.date, order: .reverse) private var checkIns: [DailyCheckIn]
+    @Query(sort: \DayLog.date, order: .reverse) private var dayLogs: [DayLog]
     @Query(sort: \TrainingPlan.updatedAt, order: .reverse) private var trainingPlans: [TrainingPlan]
 
     @State private var showingWeightSheet = false
@@ -127,7 +126,7 @@ struct FoodHubView: View {
     // MARK: 卡片② 饮食热量
 
     private var calorieBudgetCard: some View {
-        let budget = dietBudget(profile: profile, meals: meals, exercises: exercises, summaries: summaries, plans: trainingPlans, on: .now)
+        let budget = dietBudget(profile: profile, meals: meals, exercises: exercises, dayLogs: dayLogs, plans: trainingPlans, on: .now)
         return NavigationLink {
             DietCalorieDetailView()
         } label: {
@@ -270,17 +269,12 @@ struct FoodHubView: View {
 
     // MARK: 数据
 
-    /// 时间正序的体重数据点（合并 DailySummary 与 DailyCheckIn，每天取一条），最多最近 30 天。
+    /// 时间正序的体重数据点（来自每日单源 DayLog），最多最近 30 天。
     private func weightPoints() -> [MiniWeightChart.WeightPoint] {
-        var byDay: [Date: Double] = [:]
-        for summary in summaries where summary.weightKg > 0 {
-            byDay[Calendar.current.startOfDay(for: summary.date)] = summary.weightKg
-        }
-        for checkIn in checkIns where checkIn.weightKg > 0 {
-            byDay[Calendar.current.startOfDay(for: checkIn.date)] = checkIn.weightKg
-        }
-        return byDay
-            .map { MiniWeightChart.WeightPoint(date: $0.key, kg: $0.value) }
+        // DayLog 已是每日单源，直接取有体重的日子。
+        dayLogs
+            .filter { $0.weightKg > 0 }
+            .map { MiniWeightChart.WeightPoint(date: Calendar.current.startOfDay(for: $0.date), kg: $0.weightKg) }
             .sorted { $0.date < $1.date }
             .suffix(30)
             .map { $0 }
@@ -296,10 +290,10 @@ struct FoodHubView: View {
         return days <= 0 ? "今天已更新" : "\(days) 天前更新"
     }
 
-    /// 写入体重：统一走 WeightWriter，一致写入 UserProfile + 当天 DailyCheckIn + 当天 DailySummary。
+    /// 写入体重：统一走 WeightWriter，一致写入 UserProfile + 当天 DayLog。
     private func saveWeight(_ kg: Double) {
         guard let profile, (30...250).contains(kg) else { return }
-        WeightWriter.record(kg, profile: profile, context: modelContext, summaries: summaries, checkIns: checkIns)
+        WeightWriter.record(kg, profile: profile, context: modelContext, dayLogs: dayLogs)
 
         do {
             try modelContext.save()
@@ -315,7 +309,7 @@ struct DietCalorieDetailView: View {
     @Query private var profiles: [UserProfile]
     @Query(sort: \MealEntry.date, order: .reverse) private var meals: [MealEntry]
     @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
-    @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
+    @Query(sort: \DayLog.date, order: .reverse) private var dayLogs: [DayLog]
     @Query(sort: \TrainingPlan.updatedAt, order: .reverse) private var trainingPlans: [TrainingPlan]
 
     @State private var selectedDate = Calendar.current.startOfDay(for: .now)
@@ -566,12 +560,12 @@ struct DietCalorieDetailView: View {
     // MARK: 数据
 
     private var currentBudget: DietBudget {
-        dietBudget(profile: profile, meals: meals, exercises: exercises, summaries: summaries, plans: trainingPlans, on: selectedDate)
+        dietBudget(profile: profile, meals: meals, exercises: exercises, dayLogs: dayLogs, plans: trainingPlans, on: selectedDate)
     }
 
     private var dayConfirmedMeals: [MealEntry] {
         meals
-            .filter { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) && $0.isConfirmed }
+            .filter { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) }
             .sorted { $0.date < $1.date }
     }
 
@@ -609,38 +603,32 @@ private func dietBudget(
     profile: UserProfile?,
     meals: [MealEntry],
     exercises: [ExerciseEntry],
-    summaries: [DailySummary],
+    dayLogs: [DayLog],
     plans: [TrainingPlan],
     on date: Date
 ) -> DietBudget {
     guard let profile else {
         return DietBudget(recommendedBudget: 0, intake: 0, exerciseBurn: 0, remaining: 0, proteinTarget: 0, carbsTarget: 0, fatTarget: 0)
     }
-    let intake = meals
-        .filter { Calendar.current.isDate($0.date, inSameDayAs: date) && $0.isConfirmed }
-        .reduce(0) { $0 + $1.totalCalories }
-    let burn = dietExerciseBurn(exercises: exercises, summaries: summaries, on: date)
+    // 摄入与运动消耗统一走唯一聚合源（活动消耗已去重：健康聚合 + 手动）。
+    let metrics = DayMetricsCalculator.metrics(
+        for: date,
+        profile: profile,
+        meals: meals,
+        exercises: exercises,
+        dayLogs: dayLogs,
+        trainingPlans: plans
+    )
     let plan = plans.first
     return DietBudgetCalculator.compute(
         profile: profile,
-        intakeCalories: intake,
-        exerciseBurnCalories: burn,
+        intakeCalories: metrics.intakeCalories,
+        exerciseBurnCalories: metrics.activeCalories,
         planDailyCalories: plan?.dailyCalories,
         planProteinGrams: plan?.proteinGrams,
         planCarbsGrams: plan?.carbsGrams,
         planFatGrams: plan?.fatGrams
     )
-}
-
-/// 指定日期的运动消耗：优先取当天 DailySummary 的活动热量，否则累加当天 HealthKit 聚合 + 手动运动。
-private func dietExerciseBurn(exercises: [ExerciseEntry], summaries: [DailySummary], on date: Date) -> Double {
-    if let summary = summaries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) }), summary.activeCalories > 0 {
-        return summary.activeCalories
-    }
-    let entries = exercises.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
-    let daily = entries.first { $0.source == .healthKit && ($0.healthKitWorkoutID?.hasPrefix("daily-") ?? false) }?.activeCalories ?? 0
-    let manual = entries.filter { $0.source == .manual }.reduce(0) { $0 + $1.activeCalories }
-    return daily + manual
 }
 
 // MARK: - 体重输入弹窗

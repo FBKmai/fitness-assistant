@@ -53,6 +53,8 @@
 		FA20000000000000000000A1 /* DebugLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA10000000000000000000A1 /* DebugLogView.swift */; };
 		FA2000000000000000000030 /* DayMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000030 /* DayMetrics.swift */; };
 		FA2000000000000000000031 /* WeightWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000031 /* WeightWriter.swift */; };
+		FA2000000000000000000033 /* DayLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000033 /* DayLog.swift */; };
+		FA2000000000000000000034 /* DayLogMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000034 /* DayLogMigration.swift */; };
 		FA2000000000000000000032 /* DayMetricsCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000032 /* DayMetricsCalculatorTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -117,6 +119,8 @@
 		FA10000000000000000000A1 /* DebugLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogView.swift; sourceTree = "<group>"; };
 		FA1000000000000000000030 /* DayMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayMetrics.swift; sourceTree = "<group>"; };
 		FA1000000000000000000031 /* WeightWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeightWriter.swift; sourceTree = "<group>"; };
+		FA1000000000000000000033 /* DayLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayLog.swift; sourceTree = "<group>"; };
+		FA1000000000000000000034 /* DayLogMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayLogMigration.swift; sourceTree = "<group>"; };
 		FA1000000000000000000032 /* DayMetricsCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayMetricsCalculatorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -201,6 +205,7 @@
 				FA1000000000000000000006 /* ExerciseEntry.swift */,
 				FA1000000000000000000007 /* DailySummary.swift */,
 				FA1000000000000000000008 /* AISettings.swift */,
+				FA1000000000000000000033 /* DayLog.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -221,6 +226,7 @@
 				FA10000000000000000000A0 /* AppLogStore.swift */,
 				FA1000000000000000000030 /* DayMetrics.swift */,
 				FA1000000000000000000031 /* WeightWriter.swift */,
+				FA1000000000000000000034 /* DayLogMigration.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -412,6 +418,8 @@
 				FA20000000000000000000A1 /* DebugLogView.swift in Sources */,
 				FA2000000000000000000030 /* DayMetrics.swift in Sources */,
 				FA2000000000000000000031 /* WeightWriter.swift in Sources */,
+				FA2000000000000000000033 /* DayLog.swift in Sources */,
+				FA2000000000000000000034 /* DayLogMigration.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

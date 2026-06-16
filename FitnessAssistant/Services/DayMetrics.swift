@@ -45,8 +45,7 @@ enum DayMetricsCalculator {
         profile: UserProfile,
         meals: [MealEntry],
         exercises: [ExerciseEntry],
-        summaries: [DailySummary],
-        checkIns: [DailyCheckIn],
+        dayLogs: [DayLog],
         trainingPlans: [TrainingPlan],
         healthSnapshot: HealthSnapshot? = nil
     ) -> DayMetrics {
@@ -56,8 +55,7 @@ enum DayMetricsCalculator {
 
         let dayMeals = meals.filter { interval.contains($0.date) }.sorted { $0.date < $1.date }
         let dayExercises = exercises.filter { interval.contains($0.date) }.sorted { $0.date < $1.date }
-        let daySummary = summaries.first { calendar.isDate($0.date, inSameDayAs: date) }
-        let dayCheckIn = checkIns.first { calendar.isDate($0.date, inSameDayAs: date) }
+        let dayLog = dayLogs.first { calendar.isDate($0.date, inSameDayAs: date) }
 
         // 摄入与营养：当天全部餐食合计（不再按 isConfirmed 分流——保存即计入）。
         let intake = dayMeals.reduce(0) { $0 + $1.totalCalories }
@@ -79,17 +77,16 @@ enum DayMetricsCalculator {
         // 身体数据统一回退链。
         let healthMetrics = isToday ? healthSnapshot?.bodyMetrics : nil
         let weight = healthMetrics?.weightKg
-            ?? positive(dayCheckIn?.weightKg)
-            ?? positive(daySummary?.weightKg)
+            ?? positive(dayLog?.weightKg)
             ?? (isToday ? profile.currentWeightKg : nil)
-        let bodyFat = healthMetrics?.bodyFatPercentage ?? dayCheckIn?.bodyFatPercentage ?? daySummary?.bodyFatPercentage
-        let bmi = healthMetrics?.bodyMassIndex ?? dayCheckIn?.bodyMassIndex ?? daySummary?.bodyMassIndex
-        let measuredAt = healthMetrics?.measuredAt ?? dayCheckIn?.updatedAt ?? daySummary?.bodyMetricsSyncedAt
+        let bodyFat = healthMetrics?.bodyFatPercentage ?? dayLog?.bodyFatPercentage
+        let bmi = healthMetrics?.bodyMassIndex ?? dayLog?.bodyMassIndex
+        let measuredAt = healthMetrics?.measuredAt ?? dayLog?.bodyMetricsSyncedAt ?? dayLog?.updatedAt
 
         let target = effectiveDeficitTarget(profile: profile, trainingPlans: trainingPlans)
 
-        let recentDays = summaries
-            .filter { $0.date < interval.start }
+        let recentDays = dayLogs
+            .filter { $0.date < interval.start && $0.hasSummary }
             .sorted { $0.date > $1.date }
             .prefix(7)
             .map {

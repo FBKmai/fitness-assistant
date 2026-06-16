@@ -2,15 +2,20 @@ import SwiftData
 import SwiftUI
 
 struct RootView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query private var profiles: [UserProfile]
     @Query private var settings: [AISettings]
 
     var body: some View {
-        if profiles.first == nil || settings.first == nil {
-            OnboardingView()
-        } else {
-            MainTabView()
+        Group {
+            if profiles.first == nil || settings.first == nil {
+                OnboardingView()
+            } else {
+                MainTabView()
+            }
         }
+        // Phase B：首次启动把旧 DailySummary+DailyCheckIn 回填进 DayLog（幂等、只跑一次）。
+        .task { DayLogMigration.migrateIfNeeded(modelContext) }
     }
 }
 

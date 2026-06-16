@@ -4,11 +4,14 @@ import SwiftUI
 
 struct SummariesView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
+    @Query(sort: \DayLog.date, order: .reverse) private var dayLogs: [DayLog]
     @Query(sort: \MealAdviceRecord.createdAt, order: .reverse) private var mealAdviceRecords: [MealAdviceRecord]
 
+    /// 只展示已生成当日总结的 DayLog（排除只有体重/打卡的日子）。
+    private var summaries: [DayLog] { dayLogs.filter { $0.hasSummary } }
+
     /// 近 14 天，按时间正序，用于趋势图。
-    private var trendSummaries: [DailySummary] {
+    private var trendSummaries: [DayLog] {
         Array(summaries.prefix(14)).reversed()
     }
 
@@ -72,8 +75,20 @@ struct SummariesView: View {
         }
     }
 
-    private func delete(_ summary: DailySummary) {
-        modelContext.delete(summary)
+    private func delete(_ summary: DayLog) {
+        // 仅清除当日「总结」部分，保留体重/身体打卡，避免删掉体重趋势点。
+        summary.generatedAt = nil
+        summary.adviceText = ""
+        summary.snapshot = nil
+        summary.intakeCalories = 0
+        summary.activeCalories = 0
+        summary.restingCalories = 0
+        summary.totalBurnCalories = 0
+        summary.calorieDeficit = 0
+        summary.proteinGrams = 0
+        summary.carbsGrams = 0
+        summary.fatGrams = 0
+        summary.updatedAt = .now
         try? modelContext.save()
     }
 
@@ -84,7 +99,7 @@ struct SummariesView: View {
 }
 
 /// 是否达到当日目标缺口。
-private func deficitReached(_ summary: DailySummary) -> Bool {
+private func deficitReached(_ summary: DayLog) -> Bool {
     let target = summary.snapshot?.targetDailyDeficitKcal ?? 0
     return target > 0 && summary.calorieDeficit >= target
 }
@@ -98,7 +113,7 @@ private let trendDayFormatter: DateFormatter = {
 
 /// 多指标趋势图：缺口 / 摄入消耗 / 体重 / 营养素，用分段控件切换（基于 Swift Charts）。
 private struct TrendChartsView: View {
-    let summaries: [DailySummary]   // 时间正序
+    let summaries: [DayLog]   // 时间正序
 
     @State private var metric: Metric = .deficit
     @State private var selectedDate: Date?
@@ -128,7 +143,7 @@ private struct TrendChartsView: View {
     }
 
     /// 当前选中（点按图表）或默认最近一天，用于表头精确数值。
-    private var activeSummary: DailySummary? {
+    private var activeSummary: DayLog? {
         if let selectedDate {
             return summaries.min {
                 abs($0.date.timeIntervalSince(selectedDate)) < abs($1.date.timeIntervalSince(selectedDate))
@@ -169,7 +184,7 @@ private struct TrendChartsView: View {
     }
 
     @ViewBuilder
-    private func headerValues(for summary: DailySummary) -> some View {
+    private func headerValues(for summary: DayLog) -> some View {
         switch metric {
         case .deficit:
             HStack(spacing: 18) {
@@ -207,7 +222,7 @@ private struct TrendChartsView: View {
     }
 
     /// 选中某天时高亮该天，未选中为全亮。
-    private func barOpacity(_ summary: DailySummary) -> Double {
+    private func barOpacity(_ summary: DayLog) -> Double {
         guard selectedDate != nil, let active = activeSummary else { return 1 }
         return Calendar.current.isDate(summary.date, inSameDayAs: active.date) ? 1 : 0.3
     }
@@ -362,7 +377,7 @@ private struct TrendChartsView: View {
 
 /// 总结列表行：日期 + 缺口（着色）+ 摄入/消耗 + 建议预览。
 private struct SummaryRow: View {
-    let summary: DailySummary
+    let summary: DayLog
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -421,7 +436,7 @@ private struct MealAdviceArchiveRow: View {
 
 /// 单日总结详情：完整热量明细 + 营养素/体重 + 当日饮食/运动清单 + AI 建议全文。
 struct SummaryDetailView: View {
-    let summary: DailySummary
+    let summary: DayLog
 
     var body: some View {
         List {

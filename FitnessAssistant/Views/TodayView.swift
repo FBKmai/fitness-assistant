@@ -9,9 +9,8 @@ struct TodayView: View {
     @Query(sort: \MealEntry.date, order: .reverse) private var meals: [MealEntry]
     @Query(sort: \FoodOption.updatedAt, order: .reverse) private var foodOptions: [FoodOption]
     @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
-    @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
+    @Query(sort: \DayLog.date, order: .reverse) private var dayLogs: [DayLog]
     @Query(sort: \MealAdviceRecord.createdAt, order: .reverse) private var mealAdviceRecords: [MealAdviceRecord]
-    @Query(sort: \DailyCheckIn.date, order: .reverse) private var checkIns: [DailyCheckIn]
     @Query(sort: \TrainingPlan.updatedAt, order: .reverse) private var trainingPlans: [TrainingPlan]
 
     @State private var isWorking = false
@@ -23,55 +22,47 @@ struct TodayView: View {
 
     private var profile: UserProfile? { profiles.first }
     private var todayMeals: [MealEntry] { meals.filter { Calendar.current.isDateInToday($0.date) } }
-    private var confirmedMeals: [MealEntry] { todayMeals.filter(\.isConfirmed) }
     private var todayExercises: [ExerciseEntry] { exercises.filter { Calendar.current.isDateInToday($0.date) } }
-    private var todaySummary: DailySummary? { summaries.first { Calendar.current.isDateInToday($0.date) } }
-    private var todayCheckIn: DailyCheckIn? { checkIns.first { Calendar.current.isDateInToday($0.date) } }
+    private var todayLog: DayLog? { dayLogs.first { Calendar.current.isDateInToday($0.date) } }
     private var latestTodayMealAdvice: MealAdviceRecord? {
         mealAdviceRecords.first { Calendar.current.isDateInToday($0.mealDate) }
     }
 
-    private var intakeCalories: Double {
-        confirmedMeals.reduce(0) { $0 + $1.totalCalories }
+    /// 今日仪表盘的唯一数据源（活动消耗去重、目标缺口口径、体重回退链、analysis）。
+    private var todayMetrics: DayMetrics? {
+        guard let profile else { return nil }
+        return DayMetricsCalculator.metrics(
+            for: .now,
+            profile: profile,
+            meals: meals,
+            exercises: exercises,
+            dayLogs: dayLogs,
+            trainingPlans: trainingPlans
+        )
     }
 
-    private var manualActiveCalories: Double {
-        todayExercises
-            .filter { $0.source == .manual }
-            .reduce(0) { $0 + $1.activeCalories }
-    }
-
-    private var healthKitAggregateActiveCalories: Double {
-        todayExercises.first {
-            $0.source == .healthKit && ($0.healthKitWorkoutID?.hasPrefix("daily-") ?? false)
-        }?.activeCalories ?? 0
-    }
-
-    private var liveActiveCalories: Double {
-        todaySummary?.activeCalories ?? (healthKitAggregateActiveCalories + manualActiveCalories)
-    }
-
-    private var restingCalories: Double { profile.map { CalorieCalculator.bmr(profile: $0) } ?? 0 }
-    private var deficit: Double { restingCalories + liveActiveCalories - intakeCalories }
+    private var intakeCalories: Double { todayMetrics?.intakeCalories ?? 0 }
+    private var liveActiveCalories: Double { todayMetrics?.activeCalories ?? 0 }
+    private var restingCalories: Double { todayMetrics?.restingCalories ?? 0 }
+    private var deficit: Double { todayMetrics?.calorieDeficit ?? 0 }
     /// 目标缺口优先取最新训练计划算出的缺口（TDEE − 每日目标热量），无训练计划时回退到设置里的目标缺口。
-    /// 统一口径由 `DayMetricsCalculator.effectiveDeficitTarget` 提供，全局唯一定义。
     private var effectiveDeficitTarget: Double {
         guard let profile else { return 0 }
         return DayMetricsCalculator.effectiveDeficitTarget(profile: profile, trainingPlans: trainingPlans)
     }
     private var deficitTarget: Double { effectiveDeficitTarget }
-    private var deficitReached: Bool { deficitTarget > 0 && deficit >= deficitTarget }
+    private var deficitReached: Bool { todayMetrics?.deficitReached ?? false }
     private var deficitTint: Color { deficitReached ? .deficitReached : .deficitShort }
     private var hasTodayRecords: Bool { !todayMeals.isEmpty || !todayExercises.isEmpty }
     private var todayWeightValue: Double? { todayWeightText.doubleValue }
-    private var todayBodyFatPercentage: Double? { todaySummary?.bodyFatPercentage }
-    private var todayBodyMassIndex: Double? { todaySummary?.bodyMassIndex }
+    private var todayBodyFatPercentage: Double? { todayMetrics?.bodyFatPercentage }
+    private var todayBodyMassIndex: Double? { todayMetrics?.bodyMassIndex }
     private var bodyMetricsSyncedText: String {
-        guard let date = todaySummary?.bodyMetricsSyncedAt else { return "尚未同步" }
+        guard let date = todayLog?.bodyMetricsSyncedAt else { return "尚未同步" }
         return DateFormatter.shortTime.string(from: date)
     }
     private var todayMealSignature: String {
-        confirmedMeals
+        todayMeals
             .map { "\($0.id.uuidString):\($0.updatedAt.timeIntervalSince1970):\($0.mealTypeRaw):\($0.date.timeIntervalSince1970):\($0.totalCalories):\($0.proteinGrams):\($0.carbsGrams):\($0.fatGrams)" }
             .joined(separator: "|")
     }
@@ -151,23 +142,23 @@ struct TodayView: View {
                     LabeledContent("HealthKit", value: healthKitService.authorizationStatusDescription)
                     LabeledContent("饮食记录", value: "\(todayMeals.count) 条")
                     LabeledContent("运动记录", value: "\(todayExercises.count) 条")
-                    if let todayCheckIn {
-                        if let sleepHours = todayCheckIn.sleepHours {
+                    if let todayLog {
+                        if let sleepHours = todayLog.sleepHours {
                             LabeledContent("睡眠", value: "\(String(format: "%.1f", sleepHours)) 小时")
                         }
-                        if let waterMl = todayCheckIn.waterMl {
+                        if let waterMl = todayLog.waterMl {
                             LabeledContent("饮水", value: "\(Int(waterMl.rounded())) ml")
                         }
-                        if !todayCheckIn.symptoms.isEmpty {
-                            LabeledContent("身体状态", value: todayCheckIn.symptoms)
+                        if !todayLog.symptoms.isEmpty {
+                            LabeledContent("身体状态", value: todayLog.symptoms)
                         }
                     }
-                    if let analysis = todaySummary?.snapshot?.analysis {
+                    if let analysis = todayMetrics?.analysis {
                         LabeledContent("减脂判断", value: analysis.energyStatus)
                         LabeledContent("数据可信度", value: "\(Int((analysis.dataQualityScore * 100).rounded()))%")
                     }
-                    if let todaySummary {
-                        LabeledContent("建议生成", value: DateFormatter.shortTime.string(from: todaySummary.generatedAt))
+                    if let generatedAt = todayLog?.generatedAt {
+                        LabeledContent("建议生成", value: DateFormatter.shortTime.string(from: generatedAt))
                     } else {
                         LabeledContent("建议生成", value: "未生成")
                     }
@@ -183,7 +174,7 @@ struct TodayView: View {
                             AdviceTextBlock(title: "注意", text: latestTodayMealAdvice.caution)
                         }
                     }
-                } else if !confirmedMeals.isEmpty {
+                } else if !todayMeals.isEmpty {
                     Section("今日饮食回复") {
                         ContentUnavailableView {
                             Label("还没有单餐评价", systemImage: "text.bubble")
@@ -211,7 +202,7 @@ struct TodayView: View {
                     Text(statusMessage)
                 }
 
-                if let advice = todaySummary?.adviceText, !advice.isEmpty {
+                if let advice = todayLog?.adviceText, !advice.isEmpty {
                     Section("今日数据摘要") {
                         Text(advice)
                             .font(.body)
@@ -225,7 +216,7 @@ struct TodayView: View {
             }
             .task {
                 await syncHealthKitOnly(silent: true)
-                if todaySummary == nil {
+                if todayLog?.hasSummary != true {
                     await syncAndGenerateSummary(silent: true)
                 }
             }
@@ -248,8 +239,8 @@ struct TodayView: View {
 
     private func saveTodayWeight() {
         guard let profile, let weight = todayWeightValue, isValidWeight(weight) else { return }
-        // 体重唯一写入口：一致写入 档案 + 当天打卡 + 当天总结。
-        WeightWriter.record(weight, profile: profile, context: modelContext, summaries: summaries, checkIns: checkIns)
+        // 体重唯一写入口：一致写入 档案 + 当天 DayLog。
+        WeightWriter.record(weight, profile: profile, context: modelContext, dayLogs: dayLogs)
 
         do {
             try modelContext.save()
@@ -261,13 +252,13 @@ struct TodayView: View {
         }
     }
 
-    private func upsertTodayCheckIn() -> DailyCheckIn {
-        if let todayCheckIn {
-            return todayCheckIn
+    private func upsertTodayLog() -> DayLog {
+        if let todayLog {
+            return todayLog
         }
-        let checkIn = DailyCheckIn(date: Calendar.current.startOfDay(for: .now))
-        modelContext.insert(checkIn)
-        return checkIn
+        let log = DayLog(date: Calendar.current.startOfDay(for: .now))
+        modelContext.insert(log)
+        return log
     }
 
     @MainActor
@@ -282,8 +273,7 @@ struct TodayView: View {
             try? await healthKitService.requestAuthorization()
             let healthSnapshot = try await healthKitService.fetchSnapshot(for: .now)
             upsertHealthEntries(from: healthSnapshot, profile: profile)
-            refreshTodayCheckInFromHealth(healthSnapshot)
-            refreshTodaySummaryFromHealth(healthSnapshot, profile: profile)
+            refreshTodayLogFromHealth(healthSnapshot)
             try modelContext.save()
 
             if !silent {
@@ -311,11 +301,8 @@ struct TodayView: View {
             try? await healthKitService.requestAuthorization()
             let healthSnapshot = try await healthKitService.fetchSnapshot(for: .now)
             upsertHealthEntries(from: healthSnapshot, profile: profile)
-            refreshTodayCheckInFromHealth(healthSnapshot)
-            try modelContext.save()
-
-            let summary = try await buildSummary(profile: profile, healthSnapshot: healthSnapshot)
-            upsertSummary(summary)
+            refreshTodayLogFromHealth(healthSnapshot)
+            generateTodaySummary(profile: profile, healthSnapshot: healthSnapshot)
             try modelContext.save()
             statusMessage = "已更新 \(DateFormatter.shortTime.string(from: .now))"
         } catch {
@@ -369,191 +356,58 @@ struct TodayView: View {
         }
     }
 
-    private func refreshTodayCheckInFromHealth(_ snapshot: HealthSnapshot) {
+    /// 把 Apple 健康的当日身体数据写进当天 DayLog（体重/体脂/BMI/睡眠/同步时间）。
+    private func refreshTodayLogFromHealth(_ snapshot: HealthSnapshot) {
         guard snapshot.bodyMetrics.hasAnyValue || snapshot.sleepHours != nil else { return }
-        let checkIn = upsertTodayCheckIn()
+        let log = upsertTodayLog()
         if let weight = snapshot.bodyMetrics.weightKg, isValidWeight(weight) {
-            checkIn.weightKg = weight
+            log.weightKg = weight
         }
         if let bodyFat = snapshot.bodyMetrics.bodyFatPercentage {
-            checkIn.bodyFatPercentage = bodyFat
+            log.bodyFatPercentage = bodyFat
         }
         if let bmi = snapshot.bodyMetrics.bodyMassIndex {
-            checkIn.bodyMassIndex = bmi
+            log.bodyMassIndex = bmi
         }
         if let sleepHours = snapshot.sleepHours {
-            checkIn.sleepHours = sleepHours
-        }
-        checkIn.updatedAt = .now
-    }
-
-    private func refreshTodaySummaryFromHealth(_ snapshot: HealthSnapshot, profile: UserProfile) {
-        guard let todaySummary else { return }
-
-        let confirmedMeals = todayMeals.filter(\.isConfirmed)
-        let manualCalories = todayExercises
-            .filter { $0.source == .manual }
-            .reduce(0) { $0 + $1.activeCalories }
-        let intake = confirmedMeals.reduce(0) { $0 + $1.totalCalories }
-        let computation = CalorieCalculator.compute(
-            intakeCalories: intake,
-            healthKitActiveCalories: snapshot.activeEnergyKcal,
-            manualActiveCalories: manualCalories,
-            healthKitRestingCalories: nil,
-            profile: profile
-        )
-
-        todaySummary.intakeCalories = computation.intakeCalories
-        todaySummary.activeCalories = computation.activeCalories
-        todaySummary.restingCalories = computation.restingCalories
-        todaySummary.totalBurnCalories = computation.totalBurnCalories
-        todaySummary.calorieDeficit = computation.calorieDeficit
-        todaySummary.weightKg = snapshot.bodyMetrics.weightKg ?? profile.currentWeightKg
-        if let bodyFat = snapshot.bodyMetrics.bodyFatPercentage {
-            todaySummary.bodyFatPercentage = bodyFat
-        }
-        if let bodyMassIndex = snapshot.bodyMetrics.bodyMassIndex {
-            todaySummary.bodyMassIndex = bodyMassIndex
+            log.sleepHours = sleepHours
         }
         if snapshot.bodyMetrics.hasAnyValue {
-            todaySummary.bodyMetricsSyncedAt = snapshot.bodyMetrics.measuredAt ?? .now
+            log.bodyMetricsSyncedAt = snapshot.bodyMetrics.measuredAt ?? .now
         }
-
-        if var existingSnapshot = todaySummary.snapshot {
-            existingSnapshot.weightKg = todaySummary.weightKg
-            existingSnapshot.bodyFatPercentage = todaySummary.bodyFatPercentage
-            existingSnapshot.bodyMassIndex = todaySummary.bodyMassIndex
-            existingSnapshot.bodyMetricsMeasuredAt = todaySummary.bodyMetricsSyncedAt
-            existingSnapshot.intakeCalories = computation.intakeCalories
-            existingSnapshot.activeCalories = computation.activeCalories
-            existingSnapshot.restingCalories = computation.restingCalories
-            existingSnapshot.totalBurnCalories = computation.totalBurnCalories
-            existingSnapshot.calorieDeficit = computation.calorieDeficit
-            existingSnapshot.analysis = FatLossAnalyzer.analyze(snapshot: existingSnapshot)
-            todaySummary.snapshot = existingSnapshot
-        }
+        log.updatedAt = .now
     }
 
-    private func buildSummary(
-        profile: UserProfile,
-        healthSnapshot: HealthSnapshot
-    ) async throws -> DailySummary {
-        let confirmedMeals = todayMeals.filter(\.isConfirmed)
-        let manualCalories = todayExercises
-            .filter { $0.source == .manual }
-            .reduce(0) { $0 + $1.activeCalories }
-        let intake = confirmedMeals.reduce(0) { $0 + $1.totalCalories }
-        let computation = CalorieCalculator.compute(
-            intakeCalories: intake,
-            healthKitActiveCalories: healthSnapshot.activeEnergyKcal,
-            manualActiveCalories: manualCalories,
-            healthKitRestingCalories: nil,
-            profile: profile
+    /// 生成当日总结并写进当天 DayLog（缓存热量/营养 + AI 摘要 + 快照 + 生成时间）。
+    /// 派生指标全部来自唯一聚合源 DayMetrics，含本次 HealthKit 实时快照。
+    private func generateTodaySummary(profile: UserProfile, healthSnapshot: HealthSnapshot) {
+        let metrics = DayMetricsCalculator.metrics(
+            for: .now,
+            profile: profile,
+            meals: meals,
+            exercises: exercises,
+            dayLogs: dayLogs,
+            trainingPlans: trainingPlans,
+            healthSnapshot: healthSnapshot
         )
-
-        let mealTexts = confirmedMeals.map { meal in
-            "\(meal.mealType.title) \(DateFormatter.shortTime.string(from: meal.date)) \(meal.textDescription) \(meal.totalCalories.kcalText) 蛋白\(Int(meal.proteinGrams))g 碳水\(Int(meal.carbsGrams))g 脂肪\(Int(meal.fatGrams))g"
-        }
-        let workoutTexts = todayExercises.map { exercise in
-            "\(exercise.source.title) \(exercise.workoutType) \(exercise.activeCalories.kcalText)"
-        }
-        let totalProtein = confirmedMeals.reduce(0) { $0 + $1.proteinGrams }
-        let totalCarbs = confirmedMeals.reduce(0) { $0 + $1.carbsGrams }
-        let totalFat = confirmedMeals.reduce(0) { $0 + $1.fatGrams }
-        let confidenceValues = confirmedMeals.map(\.confidence).filter { $0 > 0 }
-        let averageMealConfidence = confidenceValues.isEmpty
-            ? nil
-            : confidenceValues.reduce(0, +) / Double(confidenceValues.count)
-        let unconfirmedMealCount = todayMeals.filter { !$0.isConfirmed }.count
-        let bodyFatPercentage = healthSnapshot.bodyMetrics.bodyFatPercentage ?? todaySummary?.bodyFatPercentage
-        let bodyMassIndex = healthSnapshot.bodyMetrics.bodyMassIndex ?? todaySummary?.bodyMassIndex
-        let bodyMetricsMeasuredAt = healthSnapshot.bodyMetrics.measuredAt ?? todaySummary?.bodyMetricsSyncedAt
-
-        // 近 7 天趋势（不含今天），summaries 已按日期倒序排列。
-        let todayStart = Calendar.current.startOfDay(for: .now)
-        let recentDays = summaries
-            .filter { $0.date < todayStart }
-            .prefix(7)
-            .map { day in
-                DayTrend(
-                    date: day.date,
-                    intakeCalories: day.intakeCalories,
-                    calorieDeficit: day.calorieDeficit,
-                    weightKg: day.weightKg > 0 ? day.weightKg : nil
-                )
-            }
-
-        var snapshot = DailySnapshot(
-            date: .now,
-            goal: profile.goal.title,
-            targetDailyDeficitKcal: effectiveDeficitTarget,
-            heightCm: profile.heightCm,
-            weightKg: profile.currentWeightKg,
-            bodyFatPercentage: bodyFatPercentage,
-            bodyMassIndex: bodyMassIndex,
-            bodyMetricsMeasuredAt: bodyMetricsMeasuredAt,
-            gender: profile.gender.title,
-            age: profile.age,
-            bmr: CalorieCalculator.bmr(profile: profile),
-            intakeCalories: computation.intakeCalories,
-            activeCalories: computation.activeCalories,
-            restingCalories: computation.restingCalories,
-            totalBurnCalories: computation.totalBurnCalories,
-            calorieDeficit: computation.calorieDeficit,
-            proteinGrams: totalProtein,
-            carbsGrams: totalCarbs,
-            fatGrams: totalFat,
-            averageMealConfidence: averageMealConfidence,
-            unconfirmedMealCount: unconfirmedMealCount,
-            manualActiveCalories: manualCalories,
-            meals: mealTexts,
-            workouts: workoutTexts,
-            recentDays: Array(recentDays),
-            analysis: nil
-        )
-        snapshot.analysis = FatLossAnalyzer.analyze(snapshot: snapshot)
-
-        let adviceText = localSummaryText(snapshot: snapshot)
-
-        return DailySummary(
-            date: Calendar.current.startOfDay(for: .now),
-            intakeCalories: computation.intakeCalories,
-            activeCalories: computation.activeCalories,
-            restingCalories: computation.restingCalories,
-            totalBurnCalories: computation.totalBurnCalories,
-            calorieDeficit: computation.calorieDeficit,
-            weightKg: profile.currentWeightKg,
-            bodyFatPercentage: bodyFatPercentage,
-            bodyMassIndex: bodyMassIndex,
-            bodyMetricsSyncedAt: bodyMetricsMeasuredAt,
-            proteinGrams: totalProtein,
-            carbsGrams: totalCarbs,
-            fatGrams: totalFat,
-            adviceText: adviceText,
-            snapshot: snapshot
-        )
-    }
-
-    private func upsertSummary(_ newSummary: DailySummary) {
-        if let existing = todaySummary {
-            existing.intakeCalories = newSummary.intakeCalories
-            existing.activeCalories = newSummary.activeCalories
-            existing.restingCalories = newSummary.restingCalories
-            existing.totalBurnCalories = newSummary.totalBurnCalories
-            existing.calorieDeficit = newSummary.calorieDeficit
-            existing.weightKg = newSummary.weightKg
-            existing.bodyFatPercentage = newSummary.bodyFatPercentage
-            existing.bodyMassIndex = newSummary.bodyMassIndex
-            existing.bodyMetricsSyncedAt = newSummary.bodyMetricsSyncedAt
-            existing.proteinGrams = newSummary.proteinGrams
-            existing.carbsGrams = newSummary.carbsGrams
-            existing.fatGrams = newSummary.fatGrams
-            existing.adviceText = newSummary.adviceText
-            existing.snapshot = newSummary.snapshot
-            existing.generatedAt = .now
-        } else {
-            modelContext.insert(newSummary)
-        }
+        let snapshot = metrics.dailySnapshot
+        let log = upsertTodayLog()
+        log.intakeCalories = metrics.intakeCalories
+        log.activeCalories = metrics.activeCalories
+        log.restingCalories = metrics.restingCalories
+        log.totalBurnCalories = metrics.totalBurnCalories
+        log.calorieDeficit = metrics.calorieDeficit
+        log.proteinGrams = metrics.proteinGrams
+        log.carbsGrams = metrics.carbsGrams
+        log.fatGrams = metrics.fatGrams
+        if let weight = metrics.weightKg { log.weightKg = weight }
+        if let bodyFat = metrics.bodyFatPercentage { log.bodyFatPercentage = bodyFat }
+        if let bmi = metrics.bodyMassIndex { log.bodyMassIndex = bmi }
+        if let measuredAt = metrics.bodyMetricsMeasuredAt { log.bodyMetricsSyncedAt = measuredAt }
+        log.adviceText = localSummaryText(snapshot: snapshot)
+        log.snapshot = snapshot
+        log.generatedAt = .now
+        log.updatedAt = .now
     }
 
     private func localSummaryText(snapshot: DailySnapshot) -> String {

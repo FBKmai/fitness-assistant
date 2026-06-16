@@ -11,9 +11,8 @@ struct CoachHomeView: View {
     @Query(sort: \MealEntry.date, order: .reverse) private var meals: [MealEntry]
     @Query(sort: \FoodOption.updatedAt, order: .reverse) private var foodOptions: [FoodOption]
     @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
-    @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
+    @Query(sort: \DayLog.date, order: .reverse) private var dayLogs: [DayLog]
     @Query(sort: \TrainingPlan.updatedAt, order: .reverse) private var trainingPlans: [TrainingPlan]
-    @Query(sort: \DailyCheckIn.date, order: .reverse) private var checkIns: [DailyCheckIn]
     @Query(sort: \CoachMemory.updatedAt, order: .reverse) private var memories: [CoachMemory]
     @Query(sort: \CoachChatSession.updatedAt, order: .reverse) private var sessions: [CoachChatSession]
     @Query(sort: \CoachChatMessage.createdAt, order: .forward) private var allMessages: [CoachChatMessage]
@@ -42,10 +41,9 @@ struct CoachHomeView: View {
         guard let profile else { return nil }
         return CoachContextBuilder.build(
             profile: profile,
-            checkIns: checkIns,
+            dayLogs: dayLogs,
             meals: meals,
             exercises: exercises,
-            summaries: summaries,
             foodOptions: foodOptions,
             trainingPlans: trainingPlans,
             memory: memory
@@ -341,20 +339,15 @@ struct CoachHomeView: View {
             }
         case .checkIn:
             let day = Calendar.current.startOfDay(for: record.date ?? .now)
-            let checkIn = checkIns.first { Calendar.current.isDate($0.date, inSameDayAs: day) } ?? DailyCheckIn(date: day)
-            if !checkIns.contains(where: { $0.id == checkIn.id }) {
-                modelContext.insert(checkIn)
+            let log = dayLogs.first { Calendar.current.isDate($0.date, inSameDayAs: day) } ?? DayLog(date: day)
+            if !dayLogs.contains(where: { $0.id == log.id }) {
+                modelContext.insert(log)
             }
-            checkIn.apply(record)
-            // 体重同步：除 checkIn 外，补写当天 DailySummary 与（仅当天）档案，与体重单写入口口径一致。
-            if let weight = record.weightKg, weight > 0 {
-                if let summary = summaries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: day) }) {
-                    summary.weightKg = weight
-                }
-                if Calendar.current.isDateInToday(day), let profile {
-                    profile.currentWeightKg = weight
-                    profile.updatedAt = .now
-                }
+            log.apply(record)
+            // 体重写 DayLog（单源）；仅当天同步到档案 currentWeightKg。
+            if let weight = record.weightKg, weight > 0, Calendar.current.isDateInToday(day), let profile {
+                profile.currentWeightKg = weight
+                profile.updatedAt = .now
             }
         }
 

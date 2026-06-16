@@ -23,7 +23,7 @@ final class CSVExporterTests: XCTestCase {
     }
 
     func testExportWritesUTF8BOMFiles() throws {
-        let urls = try CSVExporter.export(meals: [], exercises: [], summaries: [])
+        let urls = try CSVExporter.export(meals: [], exercises: [], dayLogs: [])
         let data = try Data(contentsOf: urls[0])
         XCTAssertEqual(Array(data.prefix(3)), [0xEF, 0xBB, 0xBF])
     }
