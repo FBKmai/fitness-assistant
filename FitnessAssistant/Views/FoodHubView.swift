@@ -296,23 +296,10 @@ struct FoodHubView: View {
         return days <= 0 ? "今天已更新" : "\(days) 天前更新"
     }
 
-    /// 写入体重：同步到 UserProfile、当天 DailyCheckIn 与（若有）DailySummary，口径与今日页一致。
+    /// 写入体重：统一走 WeightWriter，一致写入 UserProfile + 当天 DailyCheckIn + 当天 DailySummary。
     private func saveWeight(_ kg: Double) {
         guard let profile, (30...250).contains(kg) else { return }
-        profile.currentWeightKg = kg
-        profile.updatedAt = .now
-
-        let day = Calendar.current.startOfDay(for: .now)
-        if let summary = summaries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: day) }) {
-            summary.weightKg = kg
-        }
-        let checkIn = checkIns.first { Calendar.current.isDate($0.date, inSameDayAs: day) } ?? {
-            let created = DailyCheckIn(date: day)
-            modelContext.insert(created)
-            return created
-        }()
-        checkIn.weightKg = kg
-        checkIn.updatedAt = .now
+        WeightWriter.record(kg, profile: profile, context: modelContext, summaries: summaries, checkIns: checkIns)
 
         do {
             try modelContext.save()

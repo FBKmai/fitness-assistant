@@ -6,6 +6,7 @@ on:
       - main
       - "教练核心"
       - "薄荷"
+      - "重构"
   workflow_dispatch:
     inputs:
       signing_mode:

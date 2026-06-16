@@ -54,11 +54,10 @@ struct TodayView: View {
     private var restingCalories: Double { profile.map { CalorieCalculator.bmr(profile: $0) } ?? 0 }
     private var deficit: Double { restingCalories + liveActiveCalories - intakeCalories }
     /// 目标缺口优先取最新训练计划算出的缺口（TDEE − 每日目标热量），无训练计划时回退到设置里的目标缺口。
+    /// 统一口径由 `DayMetricsCalculator.effectiveDeficitTarget` 提供，全局唯一定义。
     private var effectiveDeficitTarget: Double {
-        if let planTarget = trainingPlans.first?.targetDailyDeficitKcal, planTarget > 0 {
-            return planTarget
-        }
-        return profile?.targetDailyDeficitKcal ?? 0
+        guard let profile else { return 0 }
+        return DayMetricsCalculator.effectiveDeficitTarget(profile: profile, trainingPlans: trainingPlans)
     }
     private var deficitTarget: Double { effectiveDeficitTarget }
     private var deficitReached: Bool { deficitTarget > 0 && deficit >= deficitTarget }
@@ -249,14 +248,8 @@ struct TodayView: View {
 
     private func saveTodayWeight() {
         guard let profile, let weight = todayWeightValue, isValidWeight(weight) else { return }
-        profile.currentWeightKg = weight
-        profile.updatedAt = .now
-
-        if let todaySummary {
-            todaySummary.weightKg = weight
-        }
-        let checkIn = upsertTodayCheckIn()
-        checkIn.weightKg = weight
+        // 体重唯一写入口：一致写入 档案 + 当天打卡 + 当天总结。
+        WeightWriter.record(weight, profile: profile, context: modelContext, summaries: summaries, checkIns: checkIns)
 
         do {
             try modelContext.save()

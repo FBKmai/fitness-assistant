@@ -346,9 +346,15 @@ struct CoachHomeView: View {
                 modelContext.insert(checkIn)
             }
             checkIn.apply(record)
-            if let weight = record.weightKg, weight > 0, let profile {
-                profile.currentWeightKg = weight
-                profile.updatedAt = .now
+            // 体重同步：除 checkIn 外，补写当天 DailySummary 与（仅当天）档案，与体重单写入口口径一致。
+            if let weight = record.weightKg, weight > 0 {
+                if let summary = summaries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: day) }) {
+                    summary.weightKg = weight
+                }
+                if Calendar.current.isDateInToday(day), let profile {
+                    profile.currentWeightKg = weight
+                    profile.updatedAt = .now
+                }
             }
         }
 

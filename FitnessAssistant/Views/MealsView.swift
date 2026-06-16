@@ -150,6 +150,8 @@ struct MealEditorView: View {
     @Query(sort: \MealEntry.date, order: .reverse) private var mealHistory: [MealEntry]
     @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
     @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
+    @Query(sort: \DailyCheckIn.date, order: .reverse) private var checkIns: [DailyCheckIn]
+    @Query(sort: \TrainingPlan.updatedAt, order: .reverse) private var trainingPlans: [TrainingPlan]
     @Query(sort: \FoodOption.updatedAt, order: .reverse) private var foodOptions: [FoodOption]
 
     private let maxImageCount = 8
@@ -775,62 +777,18 @@ struct MealEditorView: View {
     }
 
     private func buildMealAdviceSnapshot(for meal: MealEntry, profile: UserProfile) -> MealAdviceSnapshot {
-        let dayMeals = mealHistory
-            .filter { Calendar.current.isDate($0.date, inSameDayAs: meal.date) && $0.isConfirmed }
-        let mealsForSnapshot = (dayMeals.contains { $0.id == meal.id } ? dayMeals : [meal] + dayMeals)
-            .sorted { $0.date < $1.date }
-        let intake = mealsForSnapshot.reduce(0) { $0 + $1.totalCalories }
-        let protein = mealsForSnapshot.reduce(0) { $0 + $1.proteinGrams }
-        let carbs = mealsForSnapshot.reduce(0) { $0 + $1.carbsGrams }
-        let fat = mealsForSnapshot.reduce(0) { $0 + $1.fatGrams }
-        let daySummary = summaries.first { Calendar.current.isDate($0.date, inSameDayAs: meal.date) }
-        let weightKg = daySummary?.weightKg ?? profile.currentWeightKg
-        let active = exercises
-            .filter { Calendar.current.isDate($0.date, inSameDayAs: meal.date) }
-            .reduce(0) { $0 + $1.activeCalories }
-        let resting = CalorieCalculator.bmr(profile: profile)
-        let deficit = resting + active - intake
-        let recentDays = summaries
-            .filter { $0.date < Calendar.current.startOfDay(for: meal.date) }
-            .prefix(7)
-            .map {
-                DayTrend(
-                    date: $0.date,
-                    intakeCalories: $0.intakeCalories,
-                    calorieDeficit: $0.calorieDeficit,
-                    weightKg: $0.weightKg > 0 ? $0.weightKg : nil
-                )
-            }
-
-        var dailySnapshot = DailySnapshot(
-            date: meal.date,
-            goal: profile.goal.title,
-            targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
-            heightCm: profile.heightCm,
-            weightKg: weightKg,
-            bodyFatPercentage: daySummary?.bodyFatPercentage,
-            bodyMassIndex: daySummary?.bodyMassIndex,
-            bodyMetricsMeasuredAt: daySummary?.bodyMetricsSyncedAt,
-            gender: profile.gender.title,
-            age: profile.age,
-            bmr: resting,
-            intakeCalories: intake,
-            activeCalories: active,
-            restingCalories: resting,
-            totalBurnCalories: resting + active,
-            calorieDeficit: deficit,
-            proteinGrams: protein,
-            carbsGrams: carbs,
-            fatGrams: fat,
-            averageMealConfidence: nil,
-            unconfirmedMealCount: 0,
-            manualActiveCalories: nil,
-            meals: mealsForSnapshot.map { "\($0.mealType.title) \(DateFormatter.shortTime.string(from: $0.date)) \($0.textDescription) \($0.totalCalories.kcalText)" },
-            workouts: [],
-            recentDays: Array(recentDays),
-            analysis: nil
+        // 通过唯一聚合源计算当天指标：活动消耗已去重（健康聚合 + 手动，不再累加单次 workout），
+        // 目标缺口走统一口径（训练计划优先）。确保刚保存的这一餐计入（@Query 可能尚未刷新）。
+        let allMeals = mealHistory.contains { $0.id == meal.id } ? mealHistory : mealHistory + [meal]
+        let metrics = DayMetricsCalculator.metrics(
+            for: meal.date,
+            profile: profile,
+            meals: allMeals,
+            exercises: exercises,
+            summaries: summaries,
+            checkIns: checkIns,
+            trainingPlans: trainingPlans
         )
-        dailySnapshot.analysis = FatLossAnalyzer.analyze(snapshot: dailySnapshot)
 
         return MealAdviceSnapshot(
             mealID: meal.id,
@@ -841,18 +799,18 @@ struct MealEditorView: View {
             mealProteinGrams: meal.proteinGrams,
             mealCarbsGrams: meal.carbsGrams,
             mealFatGrams: meal.fatGrams,
-            todayMeals: dailySnapshot.meals,
-            todayIntakeCalories: intake,
-            todayProteinGrams: protein,
-            todayCarbsGrams: carbs,
-            todayFatGrams: fat,
-            todayActiveCalories: active,
-            todayRestingCalories: resting,
-            todayCalorieDeficit: deficit,
+            todayMeals: metrics.mealsText,
+            todayIntakeCalories: metrics.intakeCalories,
+            todayProteinGrams: metrics.proteinGrams,
+            todayCarbsGrams: metrics.carbsGrams,
+            todayFatGrams: metrics.fatGrams,
+            todayActiveCalories: metrics.activeCalories,
+            todayRestingCalories: metrics.restingCalories,
+            todayCalorieDeficit: metrics.calorieDeficit,
             goal: profile.goal.title,
-            targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
-            weightKg: weightKg,
-            analysis: dailySnapshot.analysis ?? FatLossAnalyzer.analyze(snapshot: dailySnapshot)
+            targetDailyDeficitKcal: metrics.effectiveDeficitTarget,
+            weightKg: metrics.weightKg ?? profile.currentWeightKg,
+            analysis: metrics.analysis
         )
     }
 

@@ -17,6 +17,8 @@ enum CoachContextBuilder {
         let todayInterval = calendar.dayInterval(containing: now)
         let todayStart = todayInterval.start
         let todayCheckIn = checkIns.first { calendar.isDate($0.date, inSameDayAs: now) }
+        // 目标缺口统一口径（训练计划优先，回退档案），与今日页 / 单餐建议一致。
+        let deficitTarget = DayMetricsCalculator.effectiveDeficitTarget(profile: profile, trainingPlans: trainingPlans)
 
         let todayMeals = meals.filter { todayInterval.contains($0.date) }
         let confirmedMeals = todayMeals.filter(\.isConfirmed)
@@ -62,7 +64,7 @@ enum CoachContextBuilder {
         var dailySnapshot = DailySnapshot(
             date: now,
             goal: profile.goal.title,
-            targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
+            targetDailyDeficitKcal: deficitTarget,
             heightCm: profile.heightCm,
             weightKg: weight,
             bodyFatPercentage: bodyFat,
@@ -135,7 +137,7 @@ enum CoachContextBuilder {
             requestedAt: now,
             profile: CoachProfileSnapshot(
                 goal: profile.goal.title,
-                targetDailyDeficitKcal: profile.targetDailyDeficitKcal,
+                targetDailyDeficitKcal: deficitTarget,
                 heightCm: profile.heightCm,
                 weightKg: weight,
                 bodyFatPercentage: bodyFat,
