@@ -55,6 +55,7 @@
 		FA2000000000000000000031 /* WeightWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000031 /* WeightWriter.swift */; };
 		FA2000000000000000000033 /* DayLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000033 /* DayLog.swift */; };
 		FA2000000000000000000034 /* DayLogMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000034 /* DayLogMigration.swift */; };
+		FA2000000000000000000035 /* DataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000035 /* DataStore.swift */; };
 		FA2000000000000000000032 /* DayMetricsCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000032 /* DayMetricsCalculatorTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -121,6 +122,7 @@
 		FA1000000000000000000031 /* WeightWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeightWriter.swift; sourceTree = "<group>"; };
 		FA1000000000000000000033 /* DayLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayLog.swift; sourceTree = "<group>"; };
 		FA1000000000000000000034 /* DayLogMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayLogMigration.swift; sourceTree = "<group>"; };
+		FA1000000000000000000035 /* DataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStore.swift; sourceTree = "<group>"; };
 		FA1000000000000000000032 /* DayMetricsCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayMetricsCalculatorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -227,6 +229,7 @@
 				FA1000000000000000000030 /* DayMetrics.swift */,
 				FA1000000000000000000031 /* WeightWriter.swift */,
 				FA1000000000000000000034 /* DayLogMigration.swift */,
+				FA1000000000000000000035 /* DataStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -420,6 +423,7 @@
 				FA2000000000000000000031 /* WeightWriter.swift in Sources */,
 				FA2000000000000000000033 /* DayLog.swift in Sources */,
 				FA2000000000000000000034 /* DayLogMigration.swift in Sources */,
+				FA2000000000000000000035 /* DataStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

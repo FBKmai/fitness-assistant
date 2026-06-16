@@ -6,6 +6,7 @@ struct FitnessAssistantApp: App {
     @StateObject private var healthKitService = HealthKitService()
     @StateObject private var aiClient = AIClient()
     @StateObject private var notificationScheduler = NotificationScheduler()
+    @State private var dataStore = DataStore()
 
     private let modelContainer: ModelContainer = {
         let schema = Schema([
@@ -38,6 +39,7 @@ struct FitnessAssistantApp: App {
                 .environmentObject(healthKitService)
                 .environmentObject(aiClient)
                 .environmentObject(notificationScheduler)
+                .environment(dataStore)
         }
         .modelContainer(modelContainer)
     }

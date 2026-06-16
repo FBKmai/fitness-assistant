@@ -3,6 +3,8 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(DataStore.self) private var dataStore
+    @EnvironmentObject private var healthKitService: HealthKitService
     @Query private var profiles: [UserProfile]
     @Query private var settings: [AISettings]
 
@@ -14,8 +16,12 @@ struct RootView: View {
                 MainTabView()
             }
         }
-        // Phase B：首次启动把旧 DailySummary+DailyCheckIn 回填进 DayLog（幂等、只跑一次）。
-        .task { DayLogMigration.migrateIfNeeded(modelContext) }
+        .task {
+            // Phase C：注入依赖给 DataStore（幂等）。
+            dataStore.configure(context: modelContext, health: healthKitService)
+            // Phase B：首次启动把旧 DailySummary+DailyCheckIn 回填进 DayLog（幂等、只跑一次）。
+            DayLogMigration.migrateIfNeeded(modelContext)
+        }
     }
 }
 
