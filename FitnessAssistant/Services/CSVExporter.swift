@@ -57,34 +57,39 @@ enum CSVExporter {
     }
 
     static func dayLogsCSV(_ logs: [DayLog]) -> String {
-        var rows = [["日期", "摄入(kcal)", "活动消耗(kcal)", "基础消耗(kcal)", "总消耗(kcal)", "热量差(kcal)", "蛋白质(g)", "碳水(g)", "脂肪(g)", "体重(kg)", "体脂率(%)", "BMI", "睡眠(小时)", "饮水(ml)", "饥饿感(1-10)", "心情", "症状", "备注", "建议", "身体数据同步时间", "生成时间", "更新时间"]]
-        rows += logs.sorted { $0.date < $1.date }.map { log in
-            [
-                DateFormatter.csvDate.string(from: log.date),
-                format(log.intakeCalories),
-                format(log.activeCalories),
-                format(log.restingCalories),
-                format(log.totalBurnCalories),
-                format(log.calorieDeficit),
-                format(log.proteinGrams),
-                format(log.carbsGrams),
-                format(log.fatGrams),
-                log.weightKg > 0 ? format(log.weightKg) : "",
-                log.bodyFatPercentage.map(format) ?? "",
-                log.bodyMassIndex.map(format) ?? "",
-                log.sleepHours.map(format) ?? "",
-                log.waterMl.map(format) ?? "",
-                log.hungerLevel.map(String.init) ?? "",
-                log.mood,
-                log.symptoms,
-                log.note,
-                log.adviceText,
-                log.bodyMetricsSyncedAt.map { DateFormatter.csvDateTime.string(from: $0) } ?? "",
-                log.generatedAt.map { DateFormatter.csvDateTime.string(from: $0) } ?? "",
-                DateFormatter.csvDateTime.string(from: log.updatedAt)
-            ]
+        var rows: [[String]] = [["日期", "摄入(kcal)", "活动消耗(kcal)", "基础消耗(kcal)", "总消耗(kcal)", "热量差(kcal)", "蛋白质(g)", "碳水(g)", "脂肪(g)", "体重(kg)", "体脂率(%)", "BMI", "睡眠(小时)", "饮水(ml)", "饥饿感(1-10)", "心情", "症状", "备注", "建议", "身体数据同步时间", "生成时间", "更新时间"]]
+        for log in logs.sorted(by: { $0.date < $1.date }) {
+            rows.append(dayLogRow(log))
         }
         return encode(rows)
+    }
+
+    /// 单行拆成逐个 append，避免大数组字面量让 Swift 类型检查超时。
+    private static func dayLogRow(_ log: DayLog) -> [String] {
+        var row: [String] = []
+        row.append(DateFormatter.csvDate.string(from: log.date))
+        row.append(format(log.intakeCalories))
+        row.append(format(log.activeCalories))
+        row.append(format(log.restingCalories))
+        row.append(format(log.totalBurnCalories))
+        row.append(format(log.calorieDeficit))
+        row.append(format(log.proteinGrams))
+        row.append(format(log.carbsGrams))
+        row.append(format(log.fatGrams))
+        row.append(log.weightKg > 0 ? format(log.weightKg) : "")
+        row.append(log.bodyFatPercentage.map(format) ?? "")
+        row.append(log.bodyMassIndex.map(format) ?? "")
+        row.append(log.sleepHours.map(format) ?? "")
+        row.append(log.waterMl.map(format) ?? "")
+        row.append(log.hungerLevel.map(String.init) ?? "")
+        row.append(log.mood)
+        row.append(log.symptoms)
+        row.append(log.note)
+        row.append(log.adviceText)
+        row.append(log.bodyMetricsSyncedAt.map { DateFormatter.csvDateTime.string(from: $0) } ?? "")
+        row.append(log.generatedAt.map { DateFormatter.csvDateTime.string(from: $0) } ?? "")
+        row.append(DateFormatter.csvDateTime.string(from: log.updatedAt))
+        return row
     }
 
     private static func write(csv: String, to url: URL) throws {
