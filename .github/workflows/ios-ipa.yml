@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "教练核心"
+      - "薄荷"
   workflow_dispatch:
     inputs:
       signing_mode:
