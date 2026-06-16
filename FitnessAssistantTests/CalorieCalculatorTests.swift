@@ -72,6 +72,48 @@ final class CalorieCalculatorTests: XCTestCase {
         XCTAssertLessThan(analysis.dataQualityScore, 1)
     }
 
+    func testDietBudgetPrefersTrainingPlanTargets() {
+        let birthday = Calendar.current.date(byAdding: .year, value: -30, to: .now)!
+        let profile = UserProfile(heightCm: 170, currentWeightKg: 70, gender: .female, birthday: birthday, targetDailyDeficitKcal: 500)
+
+        let budget = DietBudgetCalculator.compute(
+            profile: profile,
+            intakeCalories: 500,
+            exerciseBurnCalories: 200,
+            planDailyCalories: 1545,
+            planProteinGrams: 58,
+            planCarbsGrams: 216,
+            planFatGrams: 60
+        )
+
+        XCTAssertEqual(budget.recommendedBudget, 1545, accuracy: 0.1)
+        XCTAssertEqual(budget.proteinTarget, 58, accuracy: 0.1)
+        XCTAssertEqual(budget.carbsTarget, 216, accuracy: 0.1)
+        XCTAssertEqual(budget.fatTarget, 60, accuracy: 0.1)
+        // 还可吃 = 预算 − 摄入 + 运动 × 0.9 = 1545 − 500 + 180
+        XCTAssertEqual(budget.remaining, 1225, accuracy: 0.1)
+    }
+
+    func testDietBudgetFallsBackToBMRWhenNoPlan() {
+        let birthday = Calendar.current.date(byAdding: .year, value: -30, to: .now)!
+        let profile = UserProfile(heightCm: 180, currentWeightKg: 80, gender: .male, birthday: birthday, targetDailyDeficitKcal: 500)
+        // BMR = 10*80 + 6.25*180 − 5*30 + 5 = 1780；预算 = 1780*1.2 − 500 = 1636
+        let expectedBudget = CalorieCalculator.bmr(profile: profile) * 1.2 - 500
+
+        let budget = DietBudgetCalculator.compute(
+            profile: profile,
+            intakeCalories: 0,
+            exerciseBurnCalories: 0
+        )
+
+        XCTAssertEqual(budget.recommendedBudget, expectedBudget, accuracy: 0.1)
+        XCTAssertEqual(budget.proteinTarget, 80 * 1.9, accuracy: 0.1)
+        XCTAssertEqual(budget.fatTarget, 80 * 0.8, accuracy: 0.1)
+        // 碳水由预算扣除蛋白/脂肪热量推导，应为正值
+        XCTAssertGreaterThan(budget.carbsTarget, 0)
+        XCTAssertEqual(budget.remaining, expectedBudget, accuracy: 0.1)
+    }
+
     func testFatLossAnalyzerUsesRecentTrend() {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: .now)

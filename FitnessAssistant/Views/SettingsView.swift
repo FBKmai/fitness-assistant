@@ -17,6 +17,8 @@ struct SettingsView: View {
 
     @State private var heightCm = 170.0
     @State private var weightText = "70.0"
+    @State private var initialWeightText = ""
+    @State private var targetWeightText = ""
     @State private var gender: Gender = .unspecified
     @State private var birthday = Date.now
     @State private var targetDeficit = 500.0
@@ -57,6 +59,18 @@ struct SettingsView: View {
                     }
                     HStack {
                         TextField("体重", text: $weightText)
+                            .keyboardType(.decimalPad)
+                        Text("kg")
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        TextField("初始体重（减脂起点）", text: $initialWeightText)
+                            .keyboardType(.decimalPad)
+                        Text("kg")
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        TextField("目标体重", text: $targetWeightText)
                             .keyboardType(.decimalPad)
                         Text("kg")
                             .foregroundStyle(.secondary)
@@ -228,6 +242,8 @@ struct SettingsView: View {
         guard let profile = profiles.first, let aiSettings = settings.first else { return }
         heightCm = profile.heightCm
         weightText = String(format: "%.1f", profile.currentWeightKg)
+        initialWeightText = profile.initialWeightKg > 0 ? String(format: "%.1f", profile.initialWeightKg) : ""
+        targetWeightText = profile.targetWeightKg > 0 ? String(format: "%.1f", profile.targetWeightKg) : ""
         gender = profile.gender
         birthday = profile.birthday
         targetDeficit = profile.targetDailyDeficitKcal
@@ -249,6 +265,8 @@ struct SettingsView: View {
 
         profile.heightCm = heightCm
         profile.currentWeightKg = parsedWeightKg
+        profile.initialWeightKg = initialWeightText.doubleValue.flatMap { (30...250).contains($0) ? $0 : nil } ?? 0
+        profile.targetWeightKg = targetWeightText.doubleValue.flatMap { (30...250).contains($0) ? $0 : nil } ?? 0
         profile.gender = gender
         profile.birthday = birthday
         profile.targetDailyDeficitKcal = targetDeficit

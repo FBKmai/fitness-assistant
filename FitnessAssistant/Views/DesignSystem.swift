@@ -1,3 +1,4 @@
+import Charts
 import SwiftUI
 import UIKit
 
@@ -141,6 +142,156 @@ struct MacroLabel: View {
                 .fontWeight(.medium)
         }
         .font(.caption)
+    }
+}
+
+// MARK: - 圆环进度
+
+/// 圆环进度：底环 + 进度环，中心可放任意内容（如「还可吃 XXX」）。
+struct ProgressRing<Content: View>: View {
+    /// 0...1，超出会夹到 1。
+    var progress: Double
+    var lineWidth: CGFloat = 14
+    var tint: Color = .green
+    var trackColor: Color = Color.secondary.opacity(0.18)
+    @ViewBuilder var content: () -> Content
+
+    private var clamped: Double { min(max(progress, 0), 1) }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(trackColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+            Circle()
+                .trim(from: 0, to: clamped)
+                .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.easeOut, value: clamped)
+            content()
+                .padding(lineWidth + 6)
+        }
+    }
+}
+
+// MARK: - 体重目标仪表
+
+/// 270° 弧形仪表，展示「起点 → 目标」的减重进度，中心显示已减重量。
+struct WeightGoalGauge: View {
+    var initialKg: Double
+    var currentKg: Double
+    var targetKg: Double
+    var lineWidth: CGFloat = 12
+
+    /// 弧线占整圆的比例（270° / 360°）。
+    private let arcFraction = 0.75
+    /// 起始旋转角，让底部留出缺口。
+    private let rotation = 135.0
+
+    private var progress: Double {
+        let total = initialKg - targetKg
+        guard total > 0 else { return 0 }
+        return min(max((initialKg - currentKg) / total, 0), 1)
+    }
+
+    private var reached: Bool { targetKg > 0 && currentKg <= targetKg }
+    private var tint: Color { reached ? .deficitReached : .deficitShort }
+    private var reducedKg: Double { initialKg - currentKg }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .trim(from: 0, to: arcFraction)
+                .stroke(Color.secondary.opacity(0.18),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(rotation))
+            Circle()
+                .trim(from: 0, to: arcFraction * progress)
+                .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(rotation))
+                .animation(.easeOut, value: progress)
+            VStack(spacing: 2) {
+                Text(String(format: "%.1f", reducedKg))
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(reducedKg >= 0 ? tint : .secondary)
+                Text("已减(公斤)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+// MARK: - 营养目标进度行
+
+/// 一行营养素：名称 + 当前/目标克 + 细进度条。
+struct MacroProgressRow: View {
+    var name: String
+    var current: Double
+    var target: Double
+    var color: Color
+
+    private var fraction: Double {
+        guard target > 0 else { return 0 }
+        return min(max(current / target, 0), 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(name)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(Int(current.rounded())) / \(Int(target.rounded())) 克")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.primary)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.secondary.opacity(0.18))
+                    Capsule().fill(color).frame(width: max(0, geo.size.width * fraction))
+                }
+            }
+            .frame(height: 6)
+        }
+    }
+}
+
+// MARK: - 迷你体重折线图
+
+/// 小尺寸体重折线图，隐藏坐标轴，用于「体重记录」卡片。
+struct MiniWeightChart: View {
+    /// 时间正序的 (日期, 体重kg) 点。
+    var points: [WeightPoint]
+    var tint: Color = .green
+
+    /// 折线图数据点（Identifiable，便于 Charts ForEach）。
+    struct WeightPoint: Identifiable {
+        var id: Date { date }
+        var date: Date
+        var kg: Double
+    }
+
+    var body: some View {
+        Chart(points) { point in
+            LineMark(x: .value("日期", point.date), y: .value("体重", point.kg))
+                .interpolationMethod(.catmullRom)
+                .foregroundStyle(tint)
+            AreaMark(x: .value("日期", point.date), y: .value("体重", point.kg))
+                .interpolationMethod(.catmullRom)
+                .foregroundStyle(tint.opacity(0.12))
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartYScale(domain: yDomain)
+    }
+
+    private var yDomain: ClosedRange<Double> {
+        let values = points.map(\.kg)
+        guard let lo = values.min(), let hi = values.max() else { return 0...1 }
+        if lo == hi { return (lo - 1)...(hi + 1) }
+        let pad = max((hi - lo) * 0.2, 0.1)
+        return (lo - pad)...(hi + pad)
     }
 }
 

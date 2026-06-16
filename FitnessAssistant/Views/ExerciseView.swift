@@ -156,9 +156,9 @@ struct ManualExerciseEditorView: View {
 
     private let presetTypes = ["快走", "跑步", "骑行", "力量训练", "游泳", "瑜伽", "椭圆机", "跳绳", "其他"]
 
-    init(exercise: ExerciseEntry? = nil) {
+    init(exercise: ExerciseEntry? = nil, initialDate: Date? = nil) {
         self.editingExercise = exercise
-        _date = State(initialValue: exercise?.date ?? .now)
+        _date = State(initialValue: exercise?.date ?? initialDate ?? .now)
         _workoutType = State(initialValue: exercise?.workoutType ?? "快走")
         _duration = State(initialValue: Self.numberText(exercise?.durationMinutes, fallback: "30"))
         _activeCalories = State(initialValue: Self.numberText(exercise?.activeCalories, fallback: ""))

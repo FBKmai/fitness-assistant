@@ -68,6 +68,81 @@ enum CalorieCalculator {
     }
 }
 
+/// 「饮食热量」卡片与详情页用的每日预算与营养目标。
+struct DietBudget {
+    /// 推荐预算（每日目标摄入，kcal）。
+    var recommendedBudget: Double
+    /// 今日已摄入（kcal）。
+    var intake: Double
+    /// 今日运动消耗（kcal）。
+    var exerciseBurn: Double
+    /// 还可吃 = 预算 − 摄入 + 运动 × 0.9（对应薄荷「运动*0.9」口径）。
+    var remaining: Double
+    var proteinTarget: Double
+    var carbsTarget: Double
+    var fatTarget: Double
+}
+
+/// 纯逻辑：根据用户档案 +（可选）训练计划目标，算出每日热量预算与三大营养目标。
+/// 训练计划口径优先，与 `TodayView` 的目标缺口取数策略保持一致。
+enum DietBudgetCalculator {
+    /// 运动消耗折算系数，避免把运动当成「随便吃」的额度。
+    static let exerciseFactor = 0.9
+
+    static func compute(
+        profile: UserProfile,
+        intakeCalories: Double,
+        exerciseBurnCalories: Double,
+        planDailyCalories: Double? = nil,
+        planProteinGrams: Double? = nil,
+        planCarbsGrams: Double? = nil,
+        planFatGrams: Double? = nil
+    ) -> DietBudget {
+        let intake = max(0, intakeCalories)
+        let burn = max(0, exerciseBurnCalories)
+        let weight = max(profile.currentWeightKg, 1)
+        let bmr = max(CalorieCalculator.bmr(profile: profile), 1)
+
+        let budget: Double
+        if let plan = planDailyCalories, plan > 0 {
+            budget = plan
+        } else {
+            // 无训练计划：用 BMR×1.2（久坐 TDEE 近似）− 目标缺口，并以摄入下限兜底。
+            let estimated = bmr * 1.2 - max(0, profile.targetDailyDeficitKcal)
+            budget = max(estimated, intakeFloor(profile: profile, bmr: bmr))
+        }
+
+        let protein: Double = (planProteinGrams ?? 0) > 0 ? planProteinGrams! : weight * 1.9
+        let fat: Double = (planFatGrams ?? 0) > 0 ? planFatGrams! : weight * 0.8
+        let carbs: Double = (planCarbsGrams ?? 0) > 0
+            ? planCarbsGrams!
+            : max(0, (budget - protein * 4 - fat * 9) / 4)
+
+        let remaining = budget - intake + burn * exerciseFactor
+
+        return DietBudget(
+            recommendedBudget: budget,
+            intake: intake,
+            exerciseBurn: burn,
+            remaining: remaining,
+            proteinTarget: protein,
+            carbsTarget: carbs,
+            fatTarget: fat
+        )
+    }
+
+    /// 按性别的每日摄入下限，再夹到 BMR 的 75%~95% 之间，防止预算过低。
+    private static func intakeFloor(profile: UserProfile, bmr: Double) -> Double {
+        let genderFloor: Double
+        switch profile.gender {
+        case .female: genderFloor = 1200
+        case .male: genderFloor = 1500
+        case .unspecified: genderFloor = 1300
+        }
+        return min(max(genderFloor, bmr * 0.75), bmr * 0.95)
+    }
+}
+
 enum FatLossAnalyzer {
     static func analyze(snapshot: DailySnapshot) -> FatLossAnalysis {
         let weight = max(snapshot.weightKg, 1)

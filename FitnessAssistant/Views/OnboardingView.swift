@@ -8,6 +8,7 @@ struct OnboardingView: View {
 
     @State private var heightCm = 170.0
     @State private var weightText = "70.0"
+    @State private var targetWeightText = ""
     @State private var gender: Gender = .unspecified
     @State private var birthday = Calendar.current.date(byAdding: .year, value: -30, to: .now) ?? .now
     @State private var targetDeficit = 500.0
@@ -85,6 +86,12 @@ struct OnboardingView: View {
                 }
 
                 Section {
+                    HStack {
+                        TextField("目标体重（选填）", text: $targetWeightText)
+                            .keyboardType(.decimalPad)
+                        Text("kg")
+                            .foregroundStyle(.secondary)
+                    }
                     Stepper(value: $targetDeficit, in: 100...1000, step: 50) {
                         LabeledContent("每日热量缺口", value: "\(Int(targetDeficit)) kcal")
                     }
@@ -92,7 +99,7 @@ struct OnboardingView: View {
                 } header: {
                     Text("减脂目标")
                 } footer: {
-                    Text("热量缺口越大减脂越快，但过大不易坚持，推荐 300–500 kcal。每天 08:00 提醒称体重，每晚此时提醒你记录当天数据。")
+                    Text("当前体重会作为减脂起点；填了目标体重后，「食物 → 体重管理方案」会显示进度。热量缺口越大减脂越快，但过大不易坚持，推荐 300–500 kcal。每天 08:00 提醒称体重，每晚此时提醒你记录当天数据。")
                 }
 
                 Section {
@@ -186,9 +193,12 @@ struct OnboardingView: View {
         }
 
         let components = Calendar.current.dateComponents([.hour, .minute], from: reminderTime)
+        let targetWeightKg = targetWeightText.doubleValue.flatMap { (30...250).contains($0) ? $0 : nil } ?? 0
         let profile = UserProfile(
             heightCm: heightCm,
             currentWeightKg: parsedWeightKg,
+            initialWeightKg: parsedWeightKg,
+            targetWeightKg: targetWeightKg,
             gender: gender,
             birthday: birthday,
             goal: .fatLoss,

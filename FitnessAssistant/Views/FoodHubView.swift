@@ -1,25 +1,703 @@
+import SwiftData
 import SwiftUI
+import UIKit
+
+// MARK: - 餐别快捷入口
+
+/// 「饮食热量」卡片图标行与详情页底部共用的快捷入口（餐别 + 运动）。
+enum MealQuickEntry: String, CaseIterable, Identifiable {
+    case breakfast
+    case lunch
+    case dinner
+    case snack
+    case exercise
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .breakfast: "早餐"
+        case .lunch: "午餐"
+        case .dinner: "晚餐"
+        case .snack: "加餐"
+        case .exercise: "运动"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .breakfast: "sun.horizon"
+        case .lunch: "sun.max"
+        case .dinner: "moon.stars"
+        case .snack: "cup.and.saucer"
+        case .exercise: "figure.run"
+        }
+    }
+
+    /// 餐别入口对应的 MealType；运动入口为 nil。
+    var mealType: MealType? {
+        switch self {
+        case .breakfast: .breakfast
+        case .lunch: .lunch
+        case .dinner: .dinner
+        case .snack: .snack
+        case .exercise: nil
+        }
+    }
+}
+
+// MARK: - 新增饮食请求（用于 sheet(item:)）
+
+/// 详情页底部入口触发的新增饮食请求，携带预设餐别与是否自动拍照。
+struct NewMealRequest: Identifiable {
+    let id = UUID()
+    var mealType: MealType?
+    var autoCamera: Bool
+}
+
+// MARK: - 食物 Tab：仪表盘
 
 struct FoodHubView: View {
+    @Environment(\.modelContext) private var modelContext
+
+    @Query private var profiles: [UserProfile]
+    @Query(sort: \MealEntry.date, order: .reverse) private var meals: [MealEntry]
+    @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
+    @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
+    @Query(sort: \DailyCheckIn.date, order: .reverse) private var checkIns: [DailyCheckIn]
+    @Query(sort: \TrainingPlan.updatedAt, order: .reverse) private var trainingPlans: [TrainingPlan]
+
+    @State private var showingWeightSheet = false
+
+    private var profile: UserProfile? { profiles.first }
+
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    NavigationLink {
-                        MealsView()
-                    } label: {
-                        Label("饮食记录", systemImage: "fork.knife")
+            ScrollView {
+                VStack(spacing: AppMetrics.sectionSpacing) {
+                    weightPlanCard
+                    calorieBudgetCard
+                    weightRecordCard
+                }
+                .padding(16)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("食物")
+            .sheet(isPresented: $showingWeightSheet) {
+                WeightInputSheet { saveWeight($0) }
+            }
+        }
+    }
+
+    // MARK: 卡片① 体重管理方案
+
+    private var weightPlanCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("体重管理方案", systemImage: "target")
+                .font(.headline)
+
+            if let profile {
+                HStack(alignment: .center) {
+                    statColumn(title: "初始", value: String(format: "%.2f", profile.resolvedInitialWeightKg))
+                    Spacer(minLength: 8)
+                    WeightGoalGauge(
+                        initialKg: profile.resolvedInitialWeightKg,
+                        currentKg: profile.currentWeightKg,
+                        targetKg: profile.targetWeightKg > 0 ? profile.targetWeightKg : profile.resolvedInitialWeightKg
+                    )
+                    .frame(width: 116, height: 116)
+                    Spacer(minLength: 8)
+                    statColumn(title: "目标", value: profile.targetWeightKg > 0 ? String(format: "%.2f", profile.targetWeightKg) : "—")
+                }
+                if profile.targetWeightKg <= 0 {
+                    Text("未设置目标体重，去「设置 → 身体资料」填写后显示减重进度。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("还没有用户资料，请先完成引导设置。")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
+    }
+
+    // MARK: 卡片② 饮食热量
+
+    private var calorieBudgetCard: some View {
+        let budget = dietBudget(profile: profile, meals: meals, exercises: exercises, summaries: summaries, plans: trainingPlans, on: .now)
+        return NavigationLink {
+            DietCalorieDetailView()
+        } label: {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Label("饮食热量", systemImage: "flame.fill")
+                        .font(.headline)
+                    Spacer()
+                    if let goal = profile?.goal.title {
+                        Text(goal)
+                            .font(.caption2.weight(.medium))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.green.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.green)
                     }
-                    NavigationLink {
-                        FoodOptionsView()
-                    } label: {
-                        Label("常吃食物选项", systemImage: "rectangle.stack")
-                    }
-                } footer: {
-                    Text("饮食记录用于每日摄入统计；常吃食物选项会进入 AI 教练上下文，方便饭前点单和份量判断。")
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(budget.remaining.kcalValue)
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundStyle(budget.remaining >= 0 ? .primary : Color.deficitShort)
+                    Text("千卡 · 还可吃")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: AppMetrics.tileSpacing) {
+                    innerTile(title: "饮食", value: budget.intake.kcalValue, color: .macroCarbs)
+                    innerTile(title: "运动×0.9", value: (budget.exerciseBurn * DietBudgetCalculator.exerciseFactor).kcalValue, color: .macroFat)
+                }
+
+                mealIconRow
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .cardStyle()
+    }
+
+    private var mealIconRow: some View {
+        HStack {
+            ForEach(MealQuickEntry.allCases) { entry in
+                VStack(spacing: 4) {
+                    Image(systemName: entry.icon)
+                        .font(.system(size: 17))
+                        .frame(width: 38, height: 38)
+                        .background(Color.secondary.opacity(0.1), in: Circle())
+                        .foregroundStyle(.green)
+                    Text(entry.title)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    // MARK: 卡片③ 体重记录
+
+    private var weightRecordCard: some View {
+        let points = weightPoints()
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("体重记录", systemImage: "scalemass")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    showingWeightSheet = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.green)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if let profile {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(String(format: "%.2f", profile.currentWeightKg))
+                        .font(.title.weight(.semibold))
+                    Text("公斤")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text(lastWeightUpdateText(points))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if points.count >= 2 {
+                MiniWeightChart(points: points)
+                    .frame(height: 64)
+            } else {
+                Text("记录两次以上体重后显示趋势曲线。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 12)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
+    }
+
+    // MARK: 小组件
+
+    private func statColumn(title: String, value: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.title3.weight(.semibold))
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func innerTile(title: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value)
+                    .font(.headline)
+                    .foregroundStyle(color)
+                Text("kcal")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    // MARK: 数据
+
+    /// 时间正序的体重数据点（合并 DailySummary 与 DailyCheckIn，每天取一条），最多最近 30 天。
+    private func weightPoints() -> [MiniWeightChart.WeightPoint] {
+        var byDay: [Date: Double] = [:]
+        for summary in summaries where summary.weightKg > 0 {
+            byDay[Calendar.current.startOfDay(for: summary.date)] = summary.weightKg
+        }
+        for checkIn in checkIns where checkIn.weightKg > 0 {
+            byDay[Calendar.current.startOfDay(for: checkIn.date)] = checkIn.weightKg
+        }
+        return byDay
+            .map { MiniWeightChart.WeightPoint(date: $0.key, kg: $0.value) }
+            .sorted { $0.date < $1.date }
+            .suffix(30)
+            .map { $0 }
+    }
+
+    private func lastWeightUpdateText(_ points: [MiniWeightChart.WeightPoint]) -> String {
+        guard let last = points.last else { return "尚未记录体重" }
+        let days = Calendar.current.dateComponents(
+            [.day],
+            from: Calendar.current.startOfDay(for: last.date),
+            to: Calendar.current.startOfDay(for: .now)
+        ).day ?? 0
+        return days <= 0 ? "今天已更新" : "\(days) 天前更新"
+    }
+
+    /// 写入体重：同步到 UserProfile、当天 DailyCheckIn 与（若有）DailySummary，口径与今日页一致。
+    private func saveWeight(_ kg: Double) {
+        guard let profile, (30...250).contains(kg) else { return }
+        profile.currentWeightKg = kg
+        profile.updatedAt = .now
+
+        let day = Calendar.current.startOfDay(for: .now)
+        if let summary = summaries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: day) }) {
+            summary.weightKg = kg
+        }
+        let checkIn = checkIns.first { Calendar.current.isDate($0.date, inSameDayAs: day) } ?? {
+            let created = DailyCheckIn(date: day)
+            modelContext.insert(created)
+            return created
+        }()
+        checkIn.weightKg = kg
+        checkIn.updatedAt = .now
+
+        do {
+            try modelContext.save()
+        } catch {
+            AppLog.error("保存体重失败：\(error.localizedDescription)", category: "食物")
+        }
+    }
+}
+
+// MARK: - 饮食热量详情页（对应参考图二）
+
+struct DietCalorieDetailView: View {
+    @Query private var profiles: [UserProfile]
+    @Query(sort: \MealEntry.date, order: .reverse) private var meals: [MealEntry]
+    @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
+    @Query(sort: \DailySummary.date, order: .reverse) private var summaries: [DailySummary]
+    @Query(sort: \TrainingPlan.updatedAt, order: .reverse) private var trainingPlans: [TrainingPlan]
+
+    @State private var selectedDate = Calendar.current.startOfDay(for: .now)
+    @State private var presentingNewMeal: NewMealRequest?
+    @State private var editingMeal: MealEntry?
+    @State private var presentingExercise = false
+    @State private var showingMeals = false
+    @State private var showingFoodOptions = false
+
+    private var profile: UserProfile? { profiles.first }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: AppMetrics.sectionSpacing) {
+                weekStrip
+                ringCard
+                macroCard
+                if dayConfirmedMeals.isEmpty {
+                    emptyMealsState
+                } else {
+                    mealsList
                 }
             }
-            .navigationTitle("食物")
+            .padding(16)
         }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle(navTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button { showingMeals = true } label: {
+                        Label("饮食记录", systemImage: "list.bullet")
+                    }
+                    Button { showingFoodOptions = true } label: {
+                        Label("常吃食物选项", systemImage: "rectangle.stack")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+        .navigationDestination(isPresented: $showingMeals) { MealsView() }
+        .navigationDestination(isPresented: $showingFoodOptions) { FoodOptionsView() }
+        .sheet(item: $presentingNewMeal) { request in
+            MealEditorView(initialMealType: request.mealType, initialDate: selectedDate, autoPresentCamera: request.autoCamera)
+        }
+        .sheet(item: $editingMeal) { meal in
+            MealEditorView(meal: meal)
+        }
+        .sheet(isPresented: $presentingExercise) {
+            ManualExerciseEditorView(initialDate: selectedDate)
+        }
+        .safeAreaInset(edge: .bottom) { bottomBar }
+    }
+
+    // MARK: 顶部周日期条
+
+    private var weekStrip: some View {
+        HStack {
+            ForEach(weekDates, id: \.self) { day in
+                let isSelected = Calendar.current.isDate(day, inSameDayAs: selectedDate)
+                let isFuture = Calendar.current.startOfDay(for: day) > Calendar.current.startOfDay(for: .now)
+                Button {
+                    selectedDate = Calendar.current.startOfDay(for: day)
+                } label: {
+                    VStack(spacing: 6) {
+                        Text(weekdaySymbol(day))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text("\(Calendar.current.component(.day, from: day))")
+                            .font(.subheadline.weight(isSelected ? .bold : .regular))
+                            .frame(width: 30, height: 30)
+                            .background(isSelected ? Color.green : Color.clear, in: Circle())
+                            .foregroundStyle(isSelected ? .white : (isFuture ? Color.secondary.opacity(0.4) : .primary))
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isFuture)
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .cardStyle()
+    }
+
+    // MARK: 圆环
+
+    private var ringCard: some View {
+        let budget = currentBudget
+        return HStack {
+            sideStat(title: "饮食摄入", value: budget.intake.kcalValue)
+            Spacer(minLength: 8)
+            ProgressRing(
+                progress: budget.recommendedBudget > 0 ? budget.intake / budget.recommendedBudget : 0,
+                lineWidth: 12,
+                tint: budget.remaining >= 0 ? .green : .deficitShort
+            ) {
+                VStack(spacing: 2) {
+                    Text(budget.remaining.kcalValue)
+                        .font(.system(size: 30, weight: .bold))
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                    Text("还可吃(千卡)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("推荐预算 \(Int(budget.recommendedBudget.rounded()))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 150, height: 150)
+            Spacer(minLength: 8)
+            sideStat(title: "运动消耗", value: budget.exerciseBurn.kcalValue)
+        }
+        .frame(maxWidth: .infinity)
+        .cardStyle()
+    }
+
+    private func sideStat(title: String, value: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.headline)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: 64)
+    }
+
+    // MARK: 三大营养
+
+    private var macroCard: some View {
+        let budget = currentBudget
+        let macros = dayMacros
+        return VStack(spacing: 14) {
+            MacroProgressRow(name: "碳水化合物", current: macros.carbs, target: budget.carbsTarget, color: .macroCarbs)
+            MacroProgressRow(name: "蛋白质", current: macros.protein, target: budget.proteinTarget, color: .macroProtein)
+            MacroProgressRow(name: "脂肪", current: macros.fat, target: budget.fatTarget, color: .macroFat)
+        }
+        .cardStyle()
+    }
+
+    // MARK: 餐食列表 / 空态
+
+    private var emptyMealsState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "takeoutbag.and.cup.and.straw")
+                .font(.system(size: 40))
+                .foregroundStyle(.secondary)
+            Text(Calendar.current.isDateInToday(selectedDate) ? "还没有记录今日饮食" : "这一天还没有饮食记录")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text("用下方「AI 算热量 / 文字 / 拍照」或餐别按钮记录，自动统计热量与营养。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .cardStyle()
+    }
+
+    private var mealsList: some View {
+        VStack(spacing: 0) {
+            ForEach(dayConfirmedMeals) { meal in
+                Button {
+                    editingMeal = meal
+                } label: {
+                    HStack(alignment: .firstTextBaseline) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(meal.mealType.title) · \(DateFormatter.shortTime.string(from: meal.date))")
+                                .font(.subheadline.weight(.medium))
+                            Text(meal.textDescription.isEmpty ? "—" : meal.textDescription)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Text(meal.totalCalories.kcalText)
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .contentShape(Rectangle())
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+                if meal.id != dayConfirmedMeals.last?.id {
+                    Divider()
+                }
+            }
+        }
+        .cardStyle()
+    }
+
+    // MARK: 底部操作栏
+
+    private var bottomBar: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                actionChip(title: "AI 算热量", icon: "sparkles") {
+                    presentingNewMeal = NewMealRequest(mealType: nil, autoCamera: false)
+                }
+                actionChip(title: "文字", icon: "pencil") {
+                    presentingNewMeal = NewMealRequest(mealType: nil, autoCamera: false)
+                }
+                actionChip(title: "拍照", icon: "camera") {
+                    presentingNewMeal = NewMealRequest(mealType: nil, autoCamera: true)
+                }
+            }
+            HStack {
+                ForEach(MealQuickEntry.allCases) { entry in
+                    Button {
+                        if let mealType = entry.mealType {
+                            presentingNewMeal = NewMealRequest(mealType: mealType, autoCamera: false)
+                        } else {
+                            presentingExercise = true
+                        }
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: entry.icon)
+                                .font(.system(size: 16))
+                            Text("+\(entry.title)")
+                                .font(.caption2)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .foregroundStyle(.green)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.bar)
+    }
+
+    private func actionChip(title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.medium))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Color.green.opacity(0.15), in: Capsule())
+                .foregroundStyle(.green)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: 数据
+
+    private var currentBudget: DietBudget {
+        dietBudget(profile: profile, meals: meals, exercises: exercises, summaries: summaries, plans: trainingPlans, on: selectedDate)
+    }
+
+    private var dayConfirmedMeals: [MealEntry] {
+        meals
+            .filter { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) && $0.isConfirmed }
+            .sorted { $0.date < $1.date }
+    }
+
+    private var dayMacros: (protein: Double, carbs: Double, fat: Double) {
+        let entries = dayConfirmedMeals
+        return (
+            entries.reduce(0) { $0 + $1.proteinGrams },
+            entries.reduce(0) { $0 + $1.carbsGrams },
+            entries.reduce(0) { $0 + $1.fatGrams }
+        )
+    }
+
+    private var weekDates: [Date] {
+        let calendar = Calendar.current
+        let base = calendar.startOfDay(for: selectedDate)
+        guard let interval = calendar.dateInterval(of: .weekOfYear, for: base) else { return [base] }
+        return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: interval.start) }
+    }
+
+    private func weekdaySymbol(_ date: Date) -> String {
+        let symbols = Calendar.current.veryShortWeekdaySymbols
+        let index = Calendar.current.component(.weekday, from: date) - 1
+        return symbols.indices.contains(index) ? symbols[index] : ""
+    }
+
+    private var navTitle: String {
+        Calendar.current.isDateInToday(selectedDate) ? "今天" : DateFormatter.dateHeader.string(from: selectedDate)
+    }
+}
+
+// MARK: - 共享：每日预算与运动消耗（食物 Tab 与详情页共用）
+
+/// 计算指定日期的饮食预算与营养目标。预算/营养优先取最新训练计划，否则回退到 BMR 估算。
+private func dietBudget(
+    profile: UserProfile?,
+    meals: [MealEntry],
+    exercises: [ExerciseEntry],
+    summaries: [DailySummary],
+    plans: [TrainingPlan],
+    on date: Date
+) -> DietBudget {
+    guard let profile else {
+        return DietBudget(recommendedBudget: 0, intake: 0, exerciseBurn: 0, remaining: 0, proteinTarget: 0, carbsTarget: 0, fatTarget: 0)
+    }
+    let intake = meals
+        .filter { Calendar.current.isDate($0.date, inSameDayAs: date) && $0.isConfirmed }
+        .reduce(0) { $0 + $1.totalCalories }
+    let burn = dietExerciseBurn(exercises: exercises, summaries: summaries, on: date)
+    let plan = plans.first
+    return DietBudgetCalculator.compute(
+        profile: profile,
+        intakeCalories: intake,
+        exerciseBurnCalories: burn,
+        planDailyCalories: plan?.dailyCalories,
+        planProteinGrams: plan?.proteinGrams,
+        planCarbsGrams: plan?.carbsGrams,
+        planFatGrams: plan?.fatGrams
+    )
+}
+
+/// 指定日期的运动消耗：优先取当天 DailySummary 的活动热量，否则累加当天 HealthKit 聚合 + 手动运动。
+private func dietExerciseBurn(exercises: [ExerciseEntry], summaries: [DailySummary], on date: Date) -> Double {
+    if let summary = summaries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: date) }), summary.activeCalories > 0 {
+        return summary.activeCalories
+    }
+    let entries = exercises.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
+    let daily = entries.first { $0.source == .healthKit && ($0.healthKitWorkoutID?.hasPrefix("daily-") ?? false) }?.activeCalories ?? 0
+    let manual = entries.filter { $0.source == .manual }.reduce(0) { $0 + $1.activeCalories }
+    return daily + manual
+}
+
+// MARK: - 体重输入弹窗
+
+private struct WeightInputSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    var onSave: (Double) -> Void
+
+    @State private var text = ""
+
+    private var value: Double? { text.doubleValue }
+    private var valid: Bool { value.map { (30...250).contains($0) } ?? false }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack {
+                        TextField("体重", text: $text)
+                            .keyboardType(.decimalPad)
+                        Text("kg")
+                            .foregroundStyle(.secondary)
+                    }
+                } footer: {
+                    Text("保存后会同步到「今日」页与体重趋势。")
+                }
+            }
+            .navigationTitle("记录今日体重")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        if let value {
+                            onSave(value)
+                            dismiss()
+                        }
+                    }
+                    .disabled(!valid)
+                }
+            }
+        }
+        .presentationDetents([.height(220)])
     }
 }

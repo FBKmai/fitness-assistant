@@ -155,6 +155,8 @@ struct MealEditorView: View {
     private let maxImageCount = 8
     /// 非空表示编辑既有记录，nil 表示新增。
     private let editingMeal: MealEntry?
+    /// 新增时是否自动弹出相机（供详情页「拍照」入口）。
+    private let autoPresentCamera: Bool
 
     @State private var mealDate: Date
     @State private var mealType: MealType
@@ -177,6 +179,7 @@ struct MealEditorView: View {
     @State private var isEstimating = false
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var didAutoPresentCamera = false
     @FocusState private var focusedField: FocusedField?
 
     private enum FocusedField: Hashable {
@@ -189,10 +192,16 @@ struct MealEditorView: View {
         case newFoodOptionName
     }
 
-    init(meal: MealEntry? = nil) {
+    init(
+        meal: MealEntry? = nil,
+        initialMealType: MealType? = nil,
+        initialDate: Date? = nil,
+        autoPresentCamera: Bool = false
+    ) {
         self.editingMeal = meal
-        _mealDate = State(initialValue: meal?.date ?? .now)
-        _mealType = State(initialValue: meal?.mealType ?? .other)
+        self.autoPresentCamera = autoPresentCamera
+        _mealDate = State(initialValue: meal?.date ?? initialDate ?? .now)
+        _mealType = State(initialValue: meal?.mealType ?? initialMealType ?? .other)
         _textDescription = State(initialValue: meal?.textDescription ?? "")
         _totalCalories = State(initialValue: Self.numberText(meal?.totalCalories, decimals: 0))
         _proteinGrams = State(initialValue: Self.numberText(meal?.proteinGrams, decimals: 1))
@@ -476,7 +485,13 @@ struct MealEditorView: View {
                 }
             }
             .onSubmit { dismissKeyboard() }
-            .onAppear { loadExistingPhotoIfNeeded() }
+            .onAppear {
+                loadExistingPhotoIfNeeded()
+                if autoPresentCamera, !isEditing, !didAutoPresentCamera {
+                    didAutoPresentCamera = true
+                    showingCamera = true
+                }
+            }
             .onChange(of: selectedPhotos) { _, newValue in
                 Task { await appendPhotos(newValue) }
             }
