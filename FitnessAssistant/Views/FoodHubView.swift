@@ -53,6 +53,13 @@ struct NewMealRequest: Identifiable {
     let id = UUID()
     var mealType: MealType?
     var autoCamera: Bool
+    var date: Date
+
+    init(mealType: MealType?, autoCamera: Bool, date: Date = .now) {
+        self.mealType = mealType
+        self.autoCamera = autoCamera
+        self.date = date
+    }
 }
 
 // MARK: - 食物 Tab：仪表盘
@@ -306,6 +313,7 @@ struct FoodHubView: View {
 // MARK: - 饮食热量详情页（对应参考图二）
 
 struct DietCalorieDetailView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query private var profiles: [UserProfile]
     @Query(sort: \MealEntry.date, order: .reverse) private var meals: [MealEntry]
     @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
@@ -315,6 +323,7 @@ struct DietCalorieDetailView: View {
     @State private var selectedDate = Calendar.current.startOfDay(for: .now)
     @State private var presentingNewMeal: NewMealRequest?
     @State private var editingMeal: MealEntry?
+    @State private var mealToDelete: MealEntry?
     @State private var presentingExercise = false
     @State private var showingMeals = false
     @State private var showingFoodOptions = false
@@ -355,13 +364,23 @@ struct DietCalorieDetailView: View {
         .navigationDestination(isPresented: $showingMeals) { MealsView() }
         .navigationDestination(isPresented: $showingFoodOptions) { FoodOptionsView() }
         .sheet(item: $presentingNewMeal) { request in
-            MealEditorView(initialMealType: request.mealType, initialDate: selectedDate, autoPresentCamera: request.autoCamera)
+            MealEditorView(initialMealType: request.mealType, initialDate: request.date, autoPresentCamera: request.autoCamera)
         }
         .sheet(item: $editingMeal) { meal in
             MealEditorView(meal: meal)
         }
         .sheet(isPresented: $presentingExercise) {
             ManualExerciseEditorView(initialDate: selectedDate)
+        }
+        .alert("删除这条饮食记录？", isPresented: deleteAlertBinding) {
+            Button("取消", role: .cancel) {
+                mealToDelete = nil
+            }
+            Button("删除", role: .destructive) {
+                deletePendingMeal()
+            }
+        } message: {
+            Text("删除后，这一餐不会再计入当天热量和营养统计。")
         }
         .safeAreaInset(edge: .bottom) { bottomBar }
     }
@@ -475,26 +494,37 @@ struct DietCalorieDetailView: View {
     private var mealsList: some View {
         VStack(spacing: 0) {
             ForEach(dayConfirmedMeals) { meal in
-                Button {
-                    editingMeal = meal
-                } label: {
-                    HStack(alignment: .firstTextBaseline) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(meal.mealType.title) · \(DateFormatter.shortTime.string(from: meal.date))")
-                                .font(.subheadline.weight(.medium))
-                            Text(meal.textDescription.isEmpty ? "—" : meal.textDescription)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Button {
+                        editingMeal = meal
+                    } label: {
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(meal.mealType.title) · \(DateFormatter.shortTime.string(from: meal.date))")
+                                    .font(.subheadline.weight(.medium))
+                                Text(meal.textDescription.isEmpty ? "—" : meal.textDescription)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            Text(meal.totalCalories.kcalText)
+                                .font(.subheadline.weight(.semibold))
                         }
-                        Spacer()
-                        Text(meal.totalCalories.kcalText)
-                            .font(.subheadline.weight(.semibold))
                     }
                     .contentShape(Rectangle())
-                    .padding(.vertical, 8)
+                    .buttonStyle(.plain)
+                    Button(role: .destructive) {
+                        mealToDelete = meal
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.subheadline)
+                            .foregroundStyle(.red)
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+                .padding(.vertical, 8)
                 if meal.id != dayConfirmedMeals.last?.id {
                     Divider()
                 }
@@ -509,20 +539,20 @@ struct DietCalorieDetailView: View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
                 actionChip(title: "AI 算热量", icon: "sparkles") {
-                    presentingNewMeal = NewMealRequest(mealType: nil, autoCamera: false)
+                    presentingNewMeal = NewMealRequest(mealType: nil, autoCamera: false, date: defaultMealDate())
                 }
                 actionChip(title: "文字", icon: "pencil") {
-                    presentingNewMeal = NewMealRequest(mealType: nil, autoCamera: false)
+                    presentingNewMeal = NewMealRequest(mealType: nil, autoCamera: false, date: defaultMealDate())
                 }
                 actionChip(title: "拍照", icon: "camera") {
-                    presentingNewMeal = NewMealRequest(mealType: nil, autoCamera: true)
+                    presentingNewMeal = NewMealRequest(mealType: nil, autoCamera: true, date: defaultMealDate())
                 }
             }
             HStack {
                 ForEach(MealQuickEntry.allCases) { entry in
                     Button {
                         if let mealType = entry.mealType {
-                            presentingNewMeal = NewMealRequest(mealType: mealType, autoCamera: false)
+                            presentingNewMeal = NewMealRequest(mealType: mealType, autoCamera: false, date: defaultMealDate())
                         } else {
                             presentingExercise = true
                         }
@@ -594,6 +624,36 @@ struct DietCalorieDetailView: View {
     private var navTitle: String {
         Calendar.current.isDateInToday(selectedDate) ? "今天" : DateFormatter.dateHeader.string(from: selectedDate)
     }
+
+    private var deleteAlertBinding: Binding<Bool> {
+        Binding(
+            get: { mealToDelete != nil },
+            set: { if !$0 { mealToDelete = nil } }
+        )
+    }
+
+    private func defaultMealDate() -> Date {
+        if Calendar.current.isDateInToday(selectedDate) {
+            return .now
+        }
+        let nowComponents = Calendar.current.dateComponents([.hour, .minute, .second], from: .now)
+        var selectedComponents = Calendar.current.dateComponents([.year, .month, .day], from: selectedDate)
+        selectedComponents.hour = nowComponents.hour
+        selectedComponents.minute = nowComponents.minute
+        selectedComponents.second = nowComponents.second
+        return Calendar.current.date(from: selectedComponents) ?? selectedDate
+    }
+
+    private func deletePendingMeal() {
+        guard let meal = mealToDelete else { return }
+        modelContext.delete(meal)
+        mealToDelete = nil
+        do {
+            try modelContext.save()
+        } catch {
+            AppLog.error("删除饮食记录失败：\(error.localizedDescription)", category: "食物")
+        }
+    }
 }
 
 // MARK: - 共享：每日预算与运动消耗（食物 Tab 与详情页共用）
@@ -646,12 +706,7 @@ private struct WeightInputSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    HStack {
-                        TextField("体重", text: $text)
-                            .keyboardType(.decimalPad)
-                        Text("kg")
-                            .foregroundStyle(.secondary)
-                    }
+                    LabeledTextFieldRow(title: "体重", unit: "kg", text: $text)
                 } footer: {
                     Text("保存后会同步到「今日」页与体重趋势。")
                 }

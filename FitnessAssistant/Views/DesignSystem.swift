@@ -84,6 +84,53 @@ struct MetricTile: View {
     }
 }
 
+struct LabeledTextFieldRow: View {
+    var title: String
+    var unit: String = ""
+    var prompt: String = "0"
+    @Binding var text: String
+    var keyboardType: UIKeyboardType = .decimalPad
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 12)
+            TextField(prompt, text: $text)
+                .keyboardType(keyboardType)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: 120)
+            if !unit.isEmpty {
+                Text(unit)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+struct LabeledDoubleFieldRow: View {
+    var title: String
+    var unit: String = ""
+    var prompt: String = "0"
+    @Binding var value: Double
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 12)
+            TextField(prompt, value: $value, format: .number)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: 110)
+            if !unit.isEmpty {
+                Text(unit)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 // MARK: - 进度条
 
 /// 展示「当前值 / 目标值」的进度条，带标题与百分比。

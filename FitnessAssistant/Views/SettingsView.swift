@@ -56,24 +56,9 @@ struct SettingsView: View {
                     Stepper(value: $heightCm, in: 120...230, step: 1) {
                         LabeledContent("身高", value: "\(Int(heightCm)) cm")
                     }
-                    HStack {
-                        TextField("体重", text: $weightText)
-                            .keyboardType(.decimalPad)
-                        Text("kg")
-                            .foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        TextField("初始体重（减脂起点）", text: $initialWeightText)
-                            .keyboardType(.decimalPad)
-                        Text("kg")
-                            .foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        TextField("目标体重", text: $targetWeightText)
-                            .keyboardType(.decimalPad)
-                        Text("kg")
-                            .foregroundStyle(.secondary)
-                    }
+                    LabeledTextFieldRow(title: "体重", unit: "kg", text: $weightText)
+                    LabeledTextFieldRow(title: "初始体重", unit: "kg", prompt: "选填", text: $initialWeightText)
+                    LabeledTextFieldRow(title: "目标体重", unit: "kg", prompt: "选填", text: $targetWeightText)
                     Picker("性别", selection: $gender) {
                         ForEach(Gender.allCases) { value in
                             Text(value.title).tag(value)

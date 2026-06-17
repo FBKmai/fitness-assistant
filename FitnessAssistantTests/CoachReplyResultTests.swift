@@ -81,4 +81,16 @@ final class CoachReplyResultTests: XCTestCase {
         XCTAssertEqual(checkIn.waterMl ?? 0, 2200)
         XCTAssertEqual(checkIn.symptoms, "鼻塞")
     }
+
+    func testCoachDailyCarryoverDefaultsMissingArrays() throws {
+        let content = #"{"summary":"今天晚餐偏咸，明天重点控钠补水。","nextDayFocus":["早餐补蛋白"]}"#
+
+        let carryover = try AIResponseParser.decodeJSONObject(CoachDailyCarryover.self, from: content)
+
+        XCTAssertEqual(carryover.summary, "今天晚餐偏咸，明天重点控钠补水。")
+        XCTAssertEqual(carryover.importantNotes, [])
+        XCTAssertEqual(carryover.foodWarnings, [])
+        XCTAssertEqual(carryover.trainingWarnings, [])
+        XCTAssertEqual(carryover.nextDayFocus, ["早餐补蛋白"])
+    }
 }

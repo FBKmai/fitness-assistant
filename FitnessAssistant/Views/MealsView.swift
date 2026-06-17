@@ -181,6 +181,7 @@ struct MealEditorView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var didAutoPresentCamera = false
+    @State private var showingDeleteConfirmation = false
     @FocusState private var focusedField: FocusedField?
 
     private enum FocusedField: Hashable {
@@ -388,22 +389,10 @@ struct MealEditorView: View {
                     }
                     .disabled(!canEstimate || isEstimating)
 
-                    TextField("总热量 kcal", text: $totalCalories)
-                        .keyboardType(.decimalPad)
-                        .focused($focusedField, equals: .totalCalories)
-                        .submitLabel(.done)
-                    TextField("蛋白质 g", text: $proteinGrams)
-                        .keyboardType(.decimalPad)
-                        .focused($focusedField, equals: .proteinGrams)
-                        .submitLabel(.done)
-                    TextField("碳水 g", text: $carbsGrams)
-                        .keyboardType(.decimalPad)
-                        .focused($focusedField, equals: .carbsGrams)
-                        .submitLabel(.done)
-                    TextField("脂肪 g", text: $fatGrams)
-                        .keyboardType(.decimalPad)
-                        .focused($focusedField, equals: .fatGrams)
-                        .submitLabel(.done)
+                    nutrientInputRow("总热量", text: $totalCalories, unit: "kcal", focus: .totalCalories)
+                    nutrientInputRow("蛋白质", text: $proteinGrams, unit: "g", focus: .proteinGrams)
+                    nutrientInputRow("碳水", text: $carbsGrams, unit: "g", focus: .carbsGrams)
+                    nutrientInputRow("脂肪", text: $fatGrams, unit: "g", focus: .fatGrams)
                     if confidence > 0 {
                         MetricProgressBar(title: "AI 置信度", current: confidence, target: 1, tint: confidenceColor)
                             .padding(.vertical, 2)
@@ -434,6 +423,17 @@ struct MealEditorView: View {
                                 }
                             }
                             .padding(.vertical, 2)
+                        }
+                    }
+                }
+
+                if isEditing {
+                    Section {
+                        Button(role: .destructive) {
+                            dismissKeyboard()
+                            showingDeleteConfirmation = true
+                        } label: {
+                            Label("删除本餐", systemImage: "trash")
                         }
                     }
                 }
@@ -486,6 +486,14 @@ struct MealEditorView: View {
                 }
             }
             .onSubmit { dismissKeyboard() }
+            .alert("删除这条饮食记录？", isPresented: $showingDeleteConfirmation) {
+                Button("取消", role: .cancel) {}
+                Button("删除", role: .destructive) {
+                    deleteEditingMeal()
+                }
+            } message: {
+                Text("删除后，这一餐不会再计入当天热量和营养统计。")
+            }
             .onAppear {
                 loadExistingPhotoIfNeeded()
                 if autoPresentCamera, !isEditing, !didAutoPresentCamera {
@@ -511,9 +519,36 @@ struct MealEditorView: View {
         }
     }
 
+    private func nutrientInputRow(_ title: String, text: Binding<String>, unit: String, focus: FocusedField) -> some View {
+        HStack(spacing: 12) {
+            Text(title)
+            Spacer(minLength: 12)
+            TextField("0", text: text)
+                .keyboardType(.decimalPad)
+                .focused($focusedField, equals: focus)
+                .submitLabel(.done)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: 120)
+            Text(unit)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private func dismissKeyboard() {
         focusedField = nil
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    private func deleteEditingMeal() {
+        guard let editingMeal else { return }
+        modelContext.delete(editingMeal)
+        do {
+            try modelContext.save()
+            dismiss()
+        } catch {
+            AppLog.error("删除饮食记录失败：\(error.localizedDescription)", category: "饮食")
+            errorMessage = error.localizedDescription
+        }
     }
 
     /// 编辑既有记录时，把已存的首图加载进来用于预览与重存。

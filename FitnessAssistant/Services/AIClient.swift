@@ -365,7 +365,7 @@ final class AIClient: ObservableObject {
 
         let systemPrompt = """
         你是用户的长期中文健身减脂 AI 教练，不是一次性问答机器人。你必须综合完整上下文给出可执行建议，风格直接、具体、像一个持续跟进的教练。
-        当前时间是【\(nowText)】。下面的 context JSON 包含用户档案、今日状态、近 7/30 天趋势、饮食、训练、食物选项、训练计划和长期教练记忆。
+        当前时间是【\(nowText)】。下面的 context JSON 包含用户档案、今日状态、近 7/30 天趋势、饮食、训练、食物选项、训练计划、长期教练记忆和前几天压缩结转的对话要点。
 
         你需要覆盖这些场景：
         1. 饭前：判断这一餐怎么吃、吃多少、是否需要补蛋白/碳水/蔬菜。
@@ -449,6 +449,67 @@ final class AIClient: ObservableObject {
         // 教练以「自然文本 + 末尾可选 ```json 结构化块」返回，解析绝不抛错：
         // 正文一定能拿到，结构化块解析失败只丢按钮、不丢正文，从根上消除“JSON 无法解析”。
         return AIResponseParser.parseCoachReply(from: content)
+    }
+
+    func generateCoachDayCarryover(
+        session: CoachChatSession,
+        messages: [CoachChatMessage],
+        context: CoachContextSnapshot,
+        settings: AISettings
+    ) async throws -> CoachDailyCarryover {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let contextData = try encoder.encode(context)
+        let contextJSON = String(data: contextData, encoding: .utf8) ?? "{}"
+
+        let dayText = DateFormatter.csvDate.string(from: session.dayDate)
+        let transcript = messages
+            .sorted { $0.createdAt < $1.createdAt }
+            .suffix(40)
+            .map { message in
+                let role = message.role == .user ? "用户" : "教练"
+                return "\(role)：\(message.text)"
+            }
+            .joined(separator: "\n")
+
+        let systemPrompt = """
+        你是用户的长期中文健身减脂 AI 教练。现在需要把某一天的教练对话压缩成第二天可继承的上下文。
+        只保留未来继续有用的信息：当天关键事实、饮食/训练/恢复注意点、第二天要跟进的重点。不要重复流水账，不要输出医疗诊断。
+
+        你必须只返回 JSON，不要 markdown，不要解释。格式如下：
+        {
+          "summary": "这一天对话的一段中文总结，80-160 字",
+          "importantNotes": ["未来还需要记住的事实"],
+          "foodWarnings": ["饮食上要注意的点"],
+          "trainingWarnings": ["训练或恢复上要注意的点"],
+          "nextDayFocus": ["第二天教练需要优先跟进的事项"]
+        }
+        """
+
+        let userPrompt = """
+        日期：\(dayText)
+
+        当天完整上下文：
+        \(contextJSON)
+
+        当天对话：
+        \(transcript)
+        """
+
+        let content = try await complete(
+            model: settings.modelName,
+            baseURL: settings.baseURL,
+            apiKeychainKey: settings.apiKeychainKey,
+            messages: [
+                ChatMessage(role: "system", content: .text(systemPrompt)),
+                ChatMessage(role: "user", content: .text(userPrompt))
+            ],
+            temperature: 0.2,
+            jsonMode: true,
+            maxTokens: 1400
+        )
+
+        return try AIResponseParser.decodeJSONObject(CoachDailyCarryover.self, from: content)
     }
 
     func testConnection(settings: AISettings) async throws -> String {

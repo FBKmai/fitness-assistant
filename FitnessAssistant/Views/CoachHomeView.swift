@@ -1,6 +1,7 @@
 import PhotosUI
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct CoachHomeView: View {
     @Environment(\.modelContext) private var modelContext
@@ -19,8 +20,12 @@ struct CoachHomeView: View {
 
     @State private var input = ""
     @State private var isLoading = false
+    @State private var isCompressing = false
     @State private var errorMessage: String?
+    @State private var carryoverErrorMessage: String?
     @State private var showContext = false
+    @State private var showingContextManager = false
+    @State private var selectedDay = Calendar.current.startOfDay(for: .now)
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var imageDataList: [Data] = []
     @FocusState private var inputFocused: Bool
@@ -29,12 +34,18 @@ struct CoachHomeView: View {
 
     private var profile: UserProfile? { profiles.first }
     private var aiSettings: AISettings? { settings.first }
-    private var session: CoachChatSession? { sessions.first }
+    private var todayStart: Date { Calendar.current.startOfDay(for: .now) }
+    private var isSelectedToday: Bool { Calendar.current.isDate(selectedDay, inSameDayAs: todayStart) }
+    private var session: CoachChatSession? { session(for: selectedDay) }
     private var memory: CoachMemory? { memories.first }
 
     private var messages: [CoachChatMessage] {
         guard let session else { return [] }
-        return allMessages.filter { $0.sessionID == session.id }
+        return messages(for: session)
+    }
+
+    private var carryoverSnapshots: [CoachDailyCarryoverSnapshot] {
+        sessions.compactMap(\.carryoverSnapshot)
     }
 
     private var currentContext: CoachContextSnapshot? {
@@ -46,13 +57,15 @@ struct CoachHomeView: View {
             exercises: exercises,
             foodOptions: foodOptions,
             trainingPlans: trainingPlans,
-            memory: memory
+            memory: memory,
+            carryovers: carryoverSnapshots
         )
     }
 
     private var canSend: Bool {
         !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !isLoading
+            && isSelectedToday
             && profile != nil
             && aiSettings != nil
     }
@@ -63,7 +76,12 @@ struct CoachHomeView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
-                            quickActions
+                            daySwitcher
+                            if isSelectedToday {
+                                quickActions
+                            } else {
+                                historicalNotice
+                            }
                             contextCard
 
                             if messages.isEmpty {
@@ -87,6 +105,12 @@ struct CoachHomeView: View {
 
                             if let errorMessage {
                                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            }
+
+                            if let carryoverErrorMessage {
+                                Label(carryoverErrorMessage, systemImage: "exclamationmark.triangle.fill")
                                     .font(.caption)
                                     .foregroundStyle(.orange)
                             }
@@ -116,9 +140,29 @@ struct CoachHomeView: View {
                         Image(systemName: "doc.text.magnifyingglass")
                     }
                     .accessibilityLabel("生成复盘问题")
+                    .disabled(!isSelectedToday)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("完成") {
+                        dismissKeyboard()
+                    }
+                    .fontWeight(.semibold)
                 }
             }
-            .onAppear { ensureSession() }
+            .sheet(isPresented: $showingContextManager) {
+                CoachContextManagerView(sessions: sessions, memory: memory)
+            }
+            .onAppear {
+                selectedDay = todayStart
+                Task { await prepareTodaySession() }
+            }
+            .onChange(of: selectedDay) { _, newValue in
+                dismissKeyboard()
+                if Calendar.current.isDate(newValue, inSameDayAs: todayStart) {
+                    ensureSession(for: todayStart)
+                }
+            }
             .onChange(of: photoItems) { _, newValue in
                 Task { await loadImages(from: newValue) }
             }
@@ -138,6 +182,63 @@ struct CoachHomeView: View {
         }
     }
 
+    private var daySwitcher: some View {
+        HStack(spacing: 10) {
+            Menu {
+                Button("今天") {
+                    selectedDay = todayStart
+                }
+                ForEach(availableSessionDays, id: \.self) { day in
+                    Button(DateFormatter.dateHeader.string(from: day)) {
+                        selectedDay = day
+                    }
+                }
+            } label: {
+                Label(
+                    isSelectedToday ? "今天" : DateFormatter.dateHeader.string(from: selectedDay),
+                    systemImage: "calendar"
+                )
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            if isCompressing {
+                HStack(spacing: 6) {
+                    ProgressView()
+                    Text("正在整理昨日上下文")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            Button {
+                showingContextManager = true
+            } label: {
+                Label("上下文", systemImage: "slider.horizontal.3")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+    }
+
+    private var historicalNotice: some View {
+        HStack(spacing: 8) {
+            Label("历史对话只读", systemImage: "archivebox")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("回到今天") {
+                selectedDay = todayStart
+            }
+            .font(.caption.weight(.semibold))
+        }
+        .padding(10)
+        .background(Color.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cardCornerRadius))
+    }
+
     private func quickButton(_ title: String, _ prompt: String) -> some View {
         Button(title) {
             input = prompt
@@ -155,6 +256,7 @@ struct CoachHomeView: View {
                     LabeledContent("目标", value: "\(context.profile.goal) · 每日缺口 \(Int(context.profile.targetDailyDeficitKcal)) kcal")
                     LabeledContent("今日记录", value: "\(context.today.confirmedMealCount) 餐 · \(context.today.workoutCount) 次训练")
                     LabeledContent("近 7 天", value: "\(context.recent7Days.count) 天趋势")
+                    LabeledContent("结转要点", value: "\(context.recentCarryovers.count) 天")
                     LabeledContent("食物选项", value: "\(context.foodOptions.count) 个")
                     LabeledContent("训练计划", value: "\(context.trainingPlans.count) 个")
                     if let memory = context.memory {
@@ -165,6 +267,13 @@ struct CoachHomeView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    Button {
+                        showingContextManager = true
+                    } label: {
+                        Label("管理上下文", systemImage: "slider.horizontal.3")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
                 .font(.callout)
                 .padding(.top, 4)
@@ -198,6 +307,34 @@ struct CoachHomeView: View {
 
     private var inputBar: some View {
         VStack(spacing: 6) {
+            if !isSelectedToday {
+                HStack {
+                    Label("历史对话只读", systemImage: "archivebox")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("回到今天") {
+                        selectedDay = todayStart
+                    }
+                    .font(.caption.weight(.semibold))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            } else {
+                if inputFocused {
+                    HStack {
+                        Spacer()
+                        Button {
+                            dismissKeyboard()
+                        } label: {
+                            Label("收起键盘", systemImage: "keyboard.chevron.compact.down")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                    .padding(.horizontal, 12)
+                }
+
             if !imageDataList.isEmpty {
                 HStack {
                     Label("已选择 \(imageDataList.count) 张图片", systemImage: "photo.on.rectangle")
@@ -237,21 +374,92 @@ struct CoachHomeView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            }
         }
         .background(.bar)
     }
 
     @discardableResult
-    private func ensureSession() -> CoachChatSession {
-        if let session { return session }
-        let newSession = CoachChatSession()
+    private func ensureSession(for day: Date? = nil) -> CoachChatSession {
+        let targetDay = Calendar.current.startOfDay(for: day ?? selectedDay)
+        if let existing = session(for: targetDay) { return existing }
+        let newSession = CoachChatSession(title: sessionTitle(for: targetDay), dayDate: targetDay)
         modelContext.insert(newSession)
         try? modelContext.save()
         return newSession
     }
 
+    private func session(for day: Date) -> CoachChatSession? {
+        let targetDay = Calendar.current.startOfDay(for: day)
+        return sessions.first { Calendar.current.isDate($0.dayDate, inSameDayAs: targetDay) }
+    }
+
+    private func messages(for session: CoachChatSession) -> [CoachChatMessage] {
+        allMessages.filter { $0.sessionID == session.id }
+    }
+
+    private var availableSessionDays: [Date] {
+        let days = sessions
+            .map { Calendar.current.startOfDay(for: $0.dayDate) }
+            .filter { !Calendar.current.isDate($0, inSameDayAs: todayStart) }
+        return Array(Set(days)).sorted(by: >)
+    }
+
+    private func sessionTitle(for day: Date) -> String {
+        Calendar.current.isDateInToday(day) ? "今日教练" : "\(DateFormatter.csvDate.string(from: day)) 教练"
+    }
+
+    private func dismissKeyboard() {
+        inputFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    @MainActor
+    private func prepareTodaySession() async {
+        ensureSession(for: todayStart)
+        await compressPastSessionsIfNeeded()
+    }
+
+    @MainActor
+    private func compressPastSessionsIfNeeded() async {
+        guard !isCompressing, let settings = aiSettings, currentContext != nil else { return }
+        let pendingSessions = sessions
+            .filter { $0.dayDate < todayStart && !$0.isArchived && $0.compressedAt == nil && !messages(for: $0).isEmpty }
+            .sorted { $0.dayDate < $1.dayDate }
+        guard !pendingSessions.isEmpty else { return }
+
+        isCompressing = true
+        carryoverErrorMessage = nil
+        defer { isCompressing = false }
+
+        for oldSession in pendingSessions {
+            guard let context = currentContext else { continue }
+            do {
+                let carryover = try await aiClient.generateCoachDayCarryover(
+                    session: oldSession,
+                    messages: messages(for: oldSession),
+                    context: context,
+                    settings: settings
+                )
+                oldSession.carryover = carryover
+                oldSession.carryoverEnabled = true
+                oldSession.isArchived = true
+                oldSession.compressedAt = .now
+                oldSession.updatedAt = .now
+                try modelContext.save()
+            } catch {
+                AppLog.error("教练每日对话压缩失败：\(error.localizedDescription)", category: "AI教练")
+                carryoverErrorMessage = "昨日上下文整理失败，可在上下文管理里稍后重试。"
+            }
+        }
+    }
+
     @MainActor
     private func send() async {
+        guard isSelectedToday else {
+            errorMessage = "历史对话只读，请回到今天继续提问。"
+            return
+        }
         guard profile != nil, let settings = aiSettings else {
             errorMessage = "请先在设置里完善身体资料并保存 AI 配置。"
             return
@@ -372,6 +580,232 @@ struct CoachHomeView: View {
             }
         }
         imageDataList = loaded
+    }
+}
+
+private struct CoachContextManagerView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let sessions: [CoachChatSession]
+    let memory: CoachMemory?
+
+    private var carryoverSessions: [CoachChatSession] {
+        sessions
+            .filter { $0.carryover != nil || $0.compressedAt != nil }
+            .sorted { $0.dayDate > $1.dayDate }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("每日结转上下文") {
+                    if carryoverSessions.isEmpty {
+                        Text("还没有可管理的每日结转。第二天进入教练页后，会自动整理前一天对话。")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(carryoverSessions) { session in
+                            CoachCarryoverEditor(session: session)
+                        }
+                    }
+                }
+
+                Section("长期记忆") {
+                    if let memory {
+                        CoachMemoryEditor(memory: memory)
+                    } else {
+                        Text("还没有长期记忆。AI 只有在确认某些信息未来也有用时，才会写入长期记忆。")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("上下文管理")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+private struct CoachCarryoverEditor: View {
+    @Environment(\.modelContext) private var modelContext
+
+    let session: CoachChatSession
+
+    @State private var enabled = true
+    @State private var summary = ""
+    @State private var importantNotes = ""
+    @State private var foodWarnings = ""
+    @State private var trainingWarnings = ""
+    @State private var nextDayFocus = ""
+    @State private var isExpanded = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            Toggle("带入后续教练上下文", isOn: $enabled)
+            TextEditor(text: $summary)
+                .frame(minHeight: 72)
+                .overlay(alignment: .topLeading) {
+                    if summary.isEmpty {
+                        Text("摘要")
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 8)
+                            .allowsHitTesting(false)
+                    }
+                }
+            labeledEditor("重要事实", text: $importantNotes)
+            labeledEditor("饮食注意", text: $foodWarnings)
+            labeledEditor("训练恢复注意", text: $trainingWarnings)
+            labeledEditor("下一天跟进", text: $nextDayFocus)
+            HStack {
+                Button(role: .destructive) {
+                    session.carryover = nil
+                    session.carryoverEnabled = false
+                    session.updatedAt = .now
+                    try? modelContext.save()
+                    load()
+                } label: {
+                    Label("删除结转", systemImage: "trash")
+                }
+                Spacer()
+                Button {
+                    save()
+                } label: {
+                    Label("保存", systemImage: "checkmark")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(DateFormatter.dateHeader.string(from: session.dayDate))
+                    .font(.subheadline.weight(.semibold))
+                Text(session.carryover?.summary.isEmpty == false ? session.carryover?.summary ?? "" : "暂无摘要")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .onAppear { load() }
+    }
+
+    private func labeledEditor(_ title: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            TextEditor(text: text)
+                .frame(minHeight: 56)
+        }
+    }
+
+    private func load() {
+        let carryover = session.carryover ?? CoachDailyCarryover()
+        enabled = session.carryoverEnabled
+        summary = carryover.summary
+        importantNotes = Self.text(from: carryover.importantNotes)
+        foodWarnings = Self.text(from: carryover.foodWarnings)
+        trainingWarnings = Self.text(from: carryover.trainingWarnings)
+        nextDayFocus = Self.text(from: carryover.nextDayFocus)
+    }
+
+    private func save() {
+        session.carryover = CoachDailyCarryover(
+            summary: summary.trimmingCharacters(in: .whitespacesAndNewlines),
+            importantNotes: Self.lines(from: importantNotes),
+            foodWarnings: Self.lines(from: foodWarnings),
+            trainingWarnings: Self.lines(from: trainingWarnings),
+            nextDayFocus: Self.lines(from: nextDayFocus)
+        )
+        session.carryoverEnabled = enabled
+        session.updatedAt = .now
+        try? modelContext.save()
+    }
+
+    private static func text(from values: [String]) -> String {
+        values.joined(separator: "\n")
+    }
+
+    private static func lines(from text: String) -> [String] {
+        text
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+}
+
+private struct CoachMemoryEditor: View {
+    @Environment(\.modelContext) private var modelContext
+
+    let memory: CoachMemory
+
+    @State private var profileSummary = ""
+    @State private var foodPreferences = ""
+    @State private var avoidances = ""
+    @State private var trainingPreferences = ""
+    @State private var healthNotes = ""
+    @State private var rules = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            labeledEditor("用户摘要", text: $profileSummary, minHeight: 72)
+            labeledEditor("常吃/偏好", text: $foodPreferences)
+            labeledEditor("忌口/避开", text: $avoidances)
+            labeledEditor("训练偏好", text: $trainingPreferences)
+            labeledEditor("健康注意", text: $healthNotes)
+            labeledEditor("固定规则", text: $rules)
+            Button {
+                save()
+            } label: {
+                Label("保存长期记忆", systemImage: "checkmark")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .onAppear { load() }
+    }
+
+    private func labeledEditor(_ title: String, text: Binding<String>, minHeight: CGFloat = 56) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            TextEditor(text: text)
+                .frame(minHeight: minHeight)
+        }
+    }
+
+    private func load() {
+        profileSummary = memory.profileSummary
+        foodPreferences = Self.text(from: memory.foodPreferences)
+        avoidances = Self.text(from: memory.avoidances)
+        trainingPreferences = Self.text(from: memory.trainingPreferences)
+        healthNotes = Self.text(from: memory.healthNotes)
+        rules = Self.text(from: memory.rules)
+    }
+
+    private func save() {
+        memory.profileSummary = profileSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        memory.foodPreferences = Self.lines(from: foodPreferences)
+        memory.avoidances = Self.lines(from: avoidances)
+        memory.trainingPreferences = Self.lines(from: trainingPreferences)
+        memory.healthNotes = Self.lines(from: healthNotes)
+        memory.rules = Self.lines(from: rules)
+        memory.updatedAt = .now
+        try? modelContext.save()
+    }
+
+    private static func text(from values: [String]) -> String {
+        values.joined(separator: "\n")
+    }
+
+    private static func lines(from text: String) -> [String] {
+        text
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 }
 

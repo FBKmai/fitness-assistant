@@ -9,6 +9,7 @@ enum CoachContextBuilder {
         foodOptions: [FoodOption],
         trainingPlans: [TrainingPlan],
         memory: CoachMemory?,
+        carryovers: [CoachDailyCarryoverSnapshot] = [],
         now: Date = .now,
         healthSnapshot: HealthSnapshot? = nil
     ) -> CoachContextSnapshot {
@@ -107,6 +108,11 @@ enum CoachContextBuilder {
                 .prefix(5)
                 .map(trainingPlanSnapshot),
             memory: memory?.snapshot,
+            recentCarryovers: carryovers
+                .filter { $0.date < todayStart }
+                .sorted { $0.date > $1.date }
+                .prefix(7)
+                .map { $0 },
             analysis: analysis,
             dataQualityNotes: analysis.dataQualityNotes
         )

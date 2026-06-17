@@ -103,4 +103,43 @@ final class CoachContextBuilderTests: XCTestCase {
         XCTAssertEqual(context.recent30Days.count, 30)
         XCTAssertTrue(context.recent7Days.allSatisfy { $0.date < Calendar.current.startOfDay(for: now) })
     }
+
+    func testBuildIncludesPastCarryoversOnly() {
+        let now = DateComponents(calendar: .current, year: 2026, month: 6, day: 15, hour: 12).date!
+        let today = Calendar.current.startOfDay(for: now)
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
+        let profile = UserProfile(heightCm: 171, currentWeightKg: 86, gender: .male)
+
+        let context = CoachContextBuilder.build(
+            profile: profile,
+            dayLogs: [],
+            meals: [],
+            exercises: [],
+            foodOptions: [],
+            trainingPlans: [],
+            memory: nil,
+            carryovers: [
+                CoachDailyCarryoverSnapshot(
+                    date: yesterday,
+                    summary: "昨天晚餐偏咸",
+                    importantNotes: ["今天早餐补蛋白"],
+                    foodWarnings: [],
+                    trainingWarnings: [],
+                    nextDayFocus: ["控钠补水"]
+                ),
+                CoachDailyCarryoverSnapshot(
+                    date: today,
+                    summary: "今天不应进入最近结转",
+                    importantNotes: [],
+                    foodWarnings: [],
+                    trainingWarnings: [],
+                    nextDayFocus: []
+                )
+            ],
+            now: now
+        )
+
+        XCTAssertEqual(context.recentCarryovers.count, 1)
+        XCTAssertEqual(context.recentCarryovers.first?.summary, "昨天晚餐偏咸")
+    }
 }

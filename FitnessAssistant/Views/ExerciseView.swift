@@ -191,12 +191,9 @@ struct ManualExerciseEditorView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    TextField("时长 分钟", text: $duration)
-                        .keyboardType(.decimalPad)
-                    TextField("活动热量 kcal", text: $activeCalories)
-                        .keyboardType(.decimalPad)
-                    TextField("步数", text: $steps)
-                        .keyboardType(.numberPad)
+                    LabeledTextFieldRow(title: "时长", unit: "分钟", text: $duration)
+                    LabeledTextFieldRow(title: "活动热量", unit: "kcal", text: $activeCalories)
+                    LabeledTextFieldRow(title: "步数", text: $steps, keyboardType: .numberPad)
                 } header: {
                     Text("运动")
                 } footer: {

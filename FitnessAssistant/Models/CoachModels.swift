@@ -420,6 +420,62 @@ struct CoachMemorySnapshot: Codable, Hashable {
     var rules: [String]
 }
 
+struct CoachDailyCarryover: Codable, Hashable {
+    var summary: String
+    var importantNotes: [String]
+    var foodWarnings: [String]
+    var trainingWarnings: [String]
+    var nextDayFocus: [String]
+
+    init(
+        summary: String = "",
+        importantNotes: [String] = [],
+        foodWarnings: [String] = [],
+        trainingWarnings: [String] = [],
+        nextDayFocus: [String] = []
+    ) {
+        self.summary = summary
+        self.importantNotes = importantNotes
+        self.foodWarnings = foodWarnings
+        self.trainingWarnings = trainingWarnings
+        self.nextDayFocus = nextDayFocus
+    }
+
+    var isEmpty: Bool {
+        summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && importantNotes.isEmpty
+            && foodWarnings.isEmpty
+            && trainingWarnings.isEmpty
+            && nextDayFocus.isEmpty
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case summary
+        case importantNotes
+        case foodWarnings
+        case trainingWarnings
+        case nextDayFocus
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        importantNotes = try container.decodeIfPresent([String].self, forKey: .importantNotes) ?? []
+        foodWarnings = try container.decodeIfPresent([String].self, forKey: .foodWarnings) ?? []
+        trainingWarnings = try container.decodeIfPresent([String].self, forKey: .trainingWarnings) ?? []
+        nextDayFocus = try container.decodeIfPresent([String].self, forKey: .nextDayFocus) ?? []
+    }
+}
+
+struct CoachDailyCarryoverSnapshot: Codable, Hashable {
+    var date: Date
+    var summary: String
+    var importantNotes: [String]
+    var foodWarnings: [String]
+    var trainingWarnings: [String]
+    var nextDayFocus: [String]
+}
+
 struct CoachContextSnapshot: Codable {
     var requestedAt: Date
     var profile: CoachProfileSnapshot
@@ -433,6 +489,7 @@ struct CoachContextSnapshot: Codable {
     var foodOptions: [FoodOptionSnapshot]
     var trainingPlans: [CoachTrainingPlanSnapshot]
     var memory: CoachMemorySnapshot?
+    var recentCarryovers: [CoachDailyCarryoverSnapshot]
     var analysis: FatLossAnalysis
     var dataQualityNotes: [String]
 }
@@ -441,22 +498,64 @@ struct CoachContextSnapshot: Codable {
 final class CoachChatSession {
     var id: UUID
     var title: String
+    var dayDate: Date = Calendar.current.startOfDay(for: .now)
     var lastMessageText: String
+    var isArchived: Bool = false
+    var carryoverEnabled: Bool = true
+    var carryoverJSON: String = ""
+    var compressedAt: Date? = nil
     var createdAt: Date
     var updatedAt: Date
 
     init(
         id: UUID = UUID(),
         title: String = "AI 教练",
+        dayDate: Date = Calendar.current.startOfDay(for: .now),
         lastMessageText: String = "",
+        isArchived: Bool = false,
+        carryoverEnabled: Bool = true,
+        carryover: CoachDailyCarryover? = nil,
+        compressedAt: Date? = nil,
         createdAt: Date = .now,
         updatedAt: Date = .now
     ) {
         self.id = id
         self.title = title
+        self.dayDate = Calendar.current.startOfDay(for: dayDate)
         self.lastMessageText = lastMessageText
+        self.isArchived = isArchived
+        self.carryoverEnabled = carryoverEnabled
+        self.carryoverJSON = Self.encode(carryover)
+        self.compressedAt = compressedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    var carryover: CoachDailyCarryover? {
+        get { Self.decode(CoachDailyCarryover.self, from: carryoverJSON) }
+        set { carryoverJSON = Self.encode(newValue) }
+    }
+
+    var carryoverSnapshot: CoachDailyCarryoverSnapshot? {
+        guard carryoverEnabled, let carryover, !carryover.isEmpty else { return nil }
+        return CoachDailyCarryoverSnapshot(
+            date: Calendar.current.startOfDay(for: dayDate),
+            summary: carryover.summary,
+            importantNotes: carryover.importantNotes,
+            foodWarnings: carryover.foodWarnings,
+            trainingWarnings: carryover.trainingWarnings,
+            nextDayFocus: carryover.nextDayFocus
+        )
+    }
+
+    private static func encode<T: Encodable>(_ value: T?) -> String {
+        guard let value, let data = try? JSONEncoder().encode(value) else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private static func decode<T: Decodable>(_ type: T.Type, from json: String) -> T? {
+        guard !json.isEmpty, let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
     }
 }
 

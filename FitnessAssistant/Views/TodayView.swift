@@ -87,12 +87,7 @@ struct TodayView: View {
                 .listRowBackground(Color.clear)
 
                 Section {
-                    HStack {
-                        TextField("体重 kg", text: $todayWeightText)
-                            .keyboardType(.decimalPad)
-                        Text("kg")
-                            .foregroundStyle(.secondary)
-                    }
+                    LabeledTextFieldRow(title: "体重", unit: "kg", text: $todayWeightText)
                     Button {
                         saveTodayWeight()
                     } label: {

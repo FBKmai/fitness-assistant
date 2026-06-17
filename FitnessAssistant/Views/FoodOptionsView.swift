@@ -270,18 +270,10 @@ struct FoodOptionEditorView: View {
                     }
                     .disabled(!canEstimate)
 
-                    TextField("总热量 kcal", text: $totalCalories)
-                        .keyboardType(.decimalPad)
-                        .focused($focusedField, equals: .totalCalories)
-                    TextField("蛋白质 g", text: $proteinGrams)
-                        .keyboardType(.decimalPad)
-                        .focused($focusedField, equals: .protein)
-                    TextField("碳水 g", text: $carbsGrams)
-                        .keyboardType(.decimalPad)
-                        .focused($focusedField, equals: .carbs)
-                    TextField("脂肪 g", text: $fatGrams)
-                        .keyboardType(.decimalPad)
-                        .focused($focusedField, equals: .fat)
+                    nutrientInputRow("总热量", text: $totalCalories, unit: "kcal", focus: .totalCalories)
+                    nutrientInputRow("蛋白质", text: $proteinGrams, unit: "g", focus: .protein)
+                    nutrientInputRow("碳水", text: $carbsGrams, unit: "g", focus: .carbs)
+                    nutrientInputRow("脂肪", text: $fatGrams, unit: "g", focus: .fat)
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -420,6 +412,21 @@ struct FoodOptionEditorView: View {
                     imageDataList.append(data)
                 }
             }
+        }
+    }
+
+    private func nutrientInputRow(_ title: String, text: Binding<String>, unit: String, focus: FocusedField) -> some View {
+        HStack(spacing: 12) {
+            Text(title)
+            Spacer(minLength: 12)
+            TextField("0", text: text)
+                .keyboardType(.decimalPad)
+                .focused($focusedField, equals: focus)
+                .submitLabel(.done)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: 120)
+            Text(unit)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -647,20 +654,10 @@ private struct FoodOptionComponentEditor: View {
             TextField("食物名称", text: $component.name)
                 .font(.headline)
             TextField("大概分量，例如 100g / 1 个", text: $component.portionDescription)
-            HStack {
-                TextField("热量", value: $component.calories, format: .number)
-                    .keyboardType(.decimalPad)
-                Text("kcal")
-                    .foregroundStyle(.secondary)
-            }
-            HStack(spacing: 8) {
-                TextField("蛋白", value: $component.proteinGrams, format: .number)
-                    .keyboardType(.decimalPad)
-                TextField("碳水", value: $component.carbsGrams, format: .number)
-                    .keyboardType(.decimalPad)
-                TextField("脂肪", value: $component.fatGrams, format: .number)
-                    .keyboardType(.decimalPad)
-            }
+            LabeledDoubleFieldRow(title: "热量", unit: "kcal", value: $component.calories)
+            LabeledDoubleFieldRow(title: "蛋白", unit: "g", value: $component.proteinGrams)
+            LabeledDoubleFieldRow(title: "碳水", unit: "g", value: $component.carbsGrams)
+            LabeledDoubleFieldRow(title: "脂肪", unit: "g", value: $component.fatGrams)
             TextField("备注", text: $component.note)
         }
         .padding(.vertical, 4)

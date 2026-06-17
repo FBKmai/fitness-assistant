@@ -282,15 +282,9 @@ struct TrainingPlanEditorView: View {
             }
             .disabled(isSyncing)
 
-            TextField("体重 kg", text: $weightKg)
-                .keyboardType(.decimalPad)
-                .focused($focusedField, equals: .weight)
-            TextField("体脂率 %（可选）", text: $bodyFat)
-                .keyboardType(.decimalPad)
-                .focused($focusedField, equals: .bodyFat)
-            TextField("BMI（可选，留空自动估算）", text: $bmi)
-                .keyboardType(.decimalPad)
-                .focused($focusedField, equals: .bmi)
+            numericInputRow("体重", text: $weightKg, unit: "kg", prompt: "0", focus: .weight)
+            numericInputRow("体脂率", text: $bodyFat, unit: "%", prompt: "选填", focus: .bodyFat)
+            numericInputRow("BMI", text: $bmi, unit: "", prompt: "自动估算", focus: .bmi)
         } header: {
             Text("身体数据")
         } footer: {
@@ -300,9 +294,7 @@ struct TrainingPlanEditorView: View {
 
     private var goalTrainingSection: some View {
         Section("目标与训练") {
-            TextField("目标体重 kg（可选）", text: $targetWeight)
-                .keyboardType(.decimalPad)
-                .focused($focusedField, equals: .targetWeight)
+            numericInputRow("目标体重", text: $targetWeight, unit: "kg", prompt: "选填", focus: .targetWeight)
 
             Stepper(value: $targetWeeks, in: 0...52) {
                 HStack {
@@ -337,9 +329,7 @@ struct TrainingPlanEditorView: View {
             TextField("训练偏好，例如 力量为主 / 力量+有氧", text: $trainingTypePreference)
                 .focused($focusedField, equals: .trainingType)
 
-            TextField("平均睡眠 小时（可选）", text: $sleepHours)
-                .keyboardType(.decimalPad)
-                .focused($focusedField, equals: .sleep)
+            numericInputRow("平均睡眠", text: $sleepHours, unit: "小时", prompt: "选填", focus: .sleep)
         }
     }
 
@@ -438,6 +428,29 @@ struct TrainingPlanEditorView: View {
     }
 
     // MARK: 行为
+
+    private func numericInputRow(
+        _ title: String,
+        text: Binding<String>,
+        unit: String,
+        prompt: String,
+        focus: FocusedField
+    ) -> some View {
+        HStack(spacing: 12) {
+            Text(title)
+            Spacer(minLength: 12)
+            TextField(prompt, text: text)
+                .keyboardType(.decimalPad)
+                .focused($focusedField, equals: focus)
+                .submitLabel(.done)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: 120)
+            if !unit.isEmpty {
+                Text(unit)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
 
     private func dismissKeyboard() {
         focusedField = nil

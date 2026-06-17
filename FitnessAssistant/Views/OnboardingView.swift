@@ -59,12 +59,7 @@ struct OnboardingView: View {
                     Stepper(value: $heightCm, in: 120...230, step: 1) {
                         LabeledContent("身高", value: "\(Int(heightCm)) cm")
                     }
-                    HStack {
-                        TextField("体重", text: $weightText)
-                            .keyboardType(.decimalPad)
-                        Text("kg")
-                            .foregroundStyle(.secondary)
-                    }
+                    LabeledTextFieldRow(title: "体重", unit: "kg", text: $weightText)
                     Picker("性别", selection: $gender) {
                         ForEach(Gender.allCases) { value in
                             Text(value.title).tag(value)
@@ -86,12 +81,7 @@ struct OnboardingView: View {
                 }
 
                 Section {
-                    HStack {
-                        TextField("目标体重（选填）", text: $targetWeightText)
-                            .keyboardType(.decimalPad)
-                        Text("kg")
-                            .foregroundStyle(.secondary)
-                    }
+                    LabeledTextFieldRow(title: "目标体重", unit: "kg", prompt: "选填", text: $targetWeightText)
                     Stepper(value: $targetDeficit, in: 100...1000, step: 50) {
                         LabeledContent("每日热量缺口", value: "\(Int(targetDeficit)) kcal")
                     }
