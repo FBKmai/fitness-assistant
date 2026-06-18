@@ -407,6 +407,13 @@ struct DietCalorieDetailView: View {
             currentWeightKg: profile?.currentWeightKg ?? 0
         )
         let points = trendWeightPoints()
+        let goalText: String? = {
+            guard let p = profile, p.targetWeightKg > 0 else { return nil }
+            var parts = ["目标 \(String(format: "%.1f", p.targetWeightKg)) kg"]
+            if p.weeklyRateKgGoal > 0 { parts.append("每周 \(String(format: "%.2f", p.weeklyRateKgGoal)) kg") }
+            if let d = p.targetDate { parts.append("目标日 \(DateFormatter.csvDate.string(from: d))") }
+            return parts.joined(separator: " · ")
+        }()
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label("体重趋势", systemImage: "chart.xyaxis.line")
@@ -434,6 +441,11 @@ struct DietCalorieDetailView: View {
             }
             if let range = trend.predictedTargetDateRange {
                 Text("预计达标：\(DateFormatter.csvDate.string(from: range.lowerBound)) ~ \(DateFormatter.csvDate.string(from: range.upperBound))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let goalText {
+                Text(goalText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

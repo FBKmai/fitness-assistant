@@ -21,6 +21,9 @@ struct SettingsView: View {
     @State private var weightText = "70.0"
     @State private var initialWeightText = ""
     @State private var targetWeightText = ""
+    @State private var hasTargetDate = false
+    @State private var targetDate = Date.now
+    @State private var weeklyRateText = ""
     @State private var gender: Gender = .unspecified
     @State private var birthday = Date.now
     @State private var targetDeficit = 500.0
@@ -64,6 +67,11 @@ struct SettingsView: View {
                     LabeledTextFieldRow(title: "体重", unit: "kg", text: $weightText)
                     LabeledTextFieldRow(title: "初始体重", unit: "kg", prompt: "选填", text: $initialWeightText)
                     LabeledTextFieldRow(title: "目标体重", unit: "kg", prompt: "选填", text: $targetWeightText)
+                    LabeledTextFieldRow(title: "每周目标", unit: "kg/周", prompt: "选填", text: $weeklyRateText)
+                    Toggle("设定目标日期", isOn: $hasTargetDate)
+                    if hasTargetDate {
+                        DatePicker("目标日期", selection: $targetDate, displayedComponents: .date)
+                    }
                     Picker("性别", selection: $gender) {
                         ForEach(Gender.allCases) { value in
                             Text(value.title).tag(value)
@@ -291,6 +299,9 @@ struct SettingsView: View {
         weightText = String(format: "%.1f", profile.currentWeightKg)
         initialWeightText = profile.initialWeightKg > 0 ? String(format: "%.1f", profile.initialWeightKg) : ""
         targetWeightText = profile.targetWeightKg > 0 ? String(format: "%.1f", profile.targetWeightKg) : ""
+        weeklyRateText = profile.weeklyRateKgGoal > 0 ? String(format: "%.2f", profile.weeklyRateKgGoal) : ""
+        hasTargetDate = profile.targetDate != nil
+        targetDate = profile.targetDate ?? Date.now
         gender = profile.gender
         birthday = profile.birthday
         targetDeficit = profile.targetDailyDeficitKcal
@@ -314,6 +325,8 @@ struct SettingsView: View {
         profile.currentWeightKg = parsedWeightKg
         profile.initialWeightKg = initialWeightText.doubleValue.flatMap { (30...250).contains($0) ? $0 : nil } ?? 0
         profile.targetWeightKg = targetWeightText.doubleValue.flatMap { (30...250).contains($0) ? $0 : nil } ?? 0
+        profile.weeklyRateKgGoal = weeklyRateText.doubleValue.flatMap { (0...3).contains($0) ? $0 : nil } ?? 0
+        profile.targetDate = hasTargetDate ? Calendar.current.startOfDay(for: targetDate) : nil
         profile.gender = gender
         profile.birthday = birthday
         profile.targetDailyDeficitKcal = targetDeficit

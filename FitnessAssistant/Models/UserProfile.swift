@@ -11,6 +11,10 @@ final class UserProfile {
     var initialWeightKg: Double = 0
     /// 目标体重；0 表示未设置。
     var targetWeightKg: Double = 0
+    /// 期望达成目标的日期；nil 表示未设置。新增字段带默认值便于轻量迁移。
+    var targetDate: Date? = nil
+    /// 期望每周减重速率（kg/周，正数表示每周减少）；0 表示未设置。
+    var weeklyRateKgGoal: Double = 0
     var genderRaw: String
     var birthday: Date
     var goalRaw: String
@@ -26,6 +30,8 @@ final class UserProfile {
         currentWeightKg: Double = 70,
         initialWeightKg: Double = 0,
         targetWeightKg: Double = 0,
+        targetDate: Date? = nil,
+        weeklyRateKgGoal: Double = 0,
         gender: Gender = .unspecified,
         birthday: Date = Calendar.current.date(byAdding: .year, value: -30, to: .now) ?? .now,
         goal: FitnessGoal = .fatLoss,
@@ -40,6 +46,8 @@ final class UserProfile {
         self.currentWeightKg = currentWeightKg
         self.initialWeightKg = initialWeightKg
         self.targetWeightKg = targetWeightKg
+        self.targetDate = targetDate
+        self.weeklyRateKgGoal = weeklyRateKgGoal
         self.genderRaw = gender.rawValue
         self.birthday = birthday
         self.goalRaw = goal.rawValue
