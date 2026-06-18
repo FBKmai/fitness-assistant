@@ -335,6 +335,7 @@ struct DietCalorieDetailView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: AppMetrics.sectionSpacing) {
+                weightTrendCard
                 weekStrip
                 ringCard
                 macroCard
@@ -394,6 +395,74 @@ struct DietCalorieDetailView: View {
             Text("删除后，这一餐不会再计入当天热量和营养统计。")
         }
         .safeAreaInset(edge: .bottom) { bottomBar }
+    }
+
+    // MARK: 体重趋势卡（以周趋势为主，淡化单日噪声）
+
+    private var weightTrendCard: some View {
+        let trend = TrendSafetyAnalyzer.weightTrend(
+            dayLogs: dayLogs,
+            targetWeightKg: profile?.targetWeightKg ?? 0,
+            currentWeightKg: profile?.currentWeightKg ?? 0
+        )
+        let points = trendWeightPoints()
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("体重趋势", systemImage: "chart.xyaxis.line")
+                    .font(.headline)
+                Spacer()
+                if trend.isPlateau {
+                    Text("平台期")
+                        .font(.caption2.weight(.bold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.orange.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.orange)
+                }
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(trend.sevenDayAverage.map { String(format: "%.2f", $0) } ?? "—")
+                    .font(.system(size: 28, weight: .bold))
+                Text("kg · 7日均值")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 18) {
+                trendStat("14日速度", trend.fourteenDayRateKgPerWeek.map { String(format: "%+.2f kg/周", $0) } ?? "数据不足")
+                trendStat("预测置信", trend.confidence)
+            }
+            if let range = trend.predictedTargetDateRange {
+                Text("预计达标：\(DateFormatter.csvDate.string(from: range.lowerBound)) ~ \(DateFormatter.csvDate.string(from: range.upperBound))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if points.count >= 2 {
+                MiniWeightChart(points: points)
+                    .frame(height: 60)
+            } else {
+                Text("多记几次体重后显示曲线；单日波动以水分为主，看 7 日均值更准。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
+    }
+
+    private func trendStat(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value).font(.subheadline.weight(.semibold))
+            Text(title).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    private func trendWeightPoints() -> [MiniWeightChart.WeightPoint] {
+        dayLogs
+            .filter { $0.weightKg > 0 }
+            .map { MiniWeightChart.WeightPoint(date: Calendar.current.startOfDay(for: $0.date), kg: $0.weightKg) }
+            .sorted { $0.date < $1.date }
+            .suffix(30)
+            .map { $0 }
     }
 
     // MARK: 顶部周日期条

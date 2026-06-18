@@ -199,7 +199,24 @@ final class AIClient: ObservableObject {
             maxTokens: 4000
         )
 
-        return try AIResponseParser.decodeJSONObject(FoodOptionEstimate.self, from: content)
+        let estimate = try AIResponseParser.decodeJSONObject(FoodOptionEstimate.self, from: content)
+        return Self.normalizeFoodOption(estimate)
+    }
+
+    /// 食物卡一致性校验：蛋白×4+碳水×4+脂肪×9 与标注热量偏差过大时，以宏量推回热量并降低置信、加提示，
+    /// 避免 AI 自报数值内部矛盾误导用户。
+    static func normalizeFoodOption(_ estimate: FoodOptionEstimate) -> FoodOptionEstimate {
+        var e = estimate
+        let macroEnergy = e.proteinGrams * 4 + e.carbsGrams * 4 + e.fatGrams * 9
+        guard macroEnergy > 0, e.totalCalories > 0 else { return e }
+        let deviation = abs(e.totalCalories - macroEnergy) / e.totalCalories
+        if deviation > 0.15 {
+            e.totalCalories = macroEnergy
+            e.confidence = min(e.confidence, 0.5)
+            let note = "（热量与三大营养素不一致，已按宏量重算为 \(Int(macroEnergy.rounded())) kcal，请核对成分表）"
+            e.summary = e.summary.isEmpty ? note : "\(e.summary)\(note)"
+        }
+        return e
     }
 
     func generateTrainingPlan(input: TrainingPlanInput, settings: AISettings) async throws -> TrainingPlanResult {
