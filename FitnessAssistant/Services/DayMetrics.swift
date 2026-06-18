@@ -125,7 +125,6 @@ enum DayMetricsCalculator {
             bmr: bmrEstimate,
             intakeCalories: intake,
             activeCalories: active,
-            bmrEstimate: bmrEstimate,
             restingCalories: resting,
             totalBurnCalories: totalBurn,
             calorieDeficit: deficit,

@@ -812,13 +812,13 @@ private struct GeminiImportPreviewView: View {
                         LabeledContent("识别年龄", value: "\(age) 岁（仅核对）")
                     }
                     if let height = preview.heightCm {
-                        LabeledContent("身高", value: "\(height, specifier: "%.1f") cm")
+                        LabeledContent("身高", value: String(format: "%.1f cm", height))
                     }
                     if let weight = preview.initialWeightKg {
-                        LabeledContent("初始体重", value: "\(weight, specifier: "%.1f") kg")
+                        LabeledContent("初始体重", value: String(format: "%.1f kg", weight))
                     }
                     if let weight = preview.targetWeightKg {
-                        LabeledContent("目标体重", value: "\(weight, specifier: "%.1f") kg")
+                        LabeledContent("目标体重", value: String(format: "%.1f kg", weight))
                     }
                     if preview.ageYears == nil,
                        preview.heightCm == nil,

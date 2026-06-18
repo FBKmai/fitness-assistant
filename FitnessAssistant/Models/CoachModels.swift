@@ -401,6 +401,16 @@ struct CoachReplyResult: Codable {
         memoryPatch = try container.decodeIfPresent(CoachMemoryPatch.self, forKey: .memoryPatch)
         riskLevel = try container.decodeIfPresent(String.self, forKey: .riskLevel) ?? "normal"
     }
+
+    // CodingKeys 含计算属性 `proposals`，无法合成 Encodable，需手写 encode。
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(replyText, forKey: .replyText)
+        try container.encode(scenario, forKey: .scenario)
+        try container.encode(suggestedRecords, forKey: .suggestedRecords)
+        try container.encodeIfPresent(memoryPatch, forKey: .memoryPatch)
+        try container.encode(riskLevel, forKey: .riskLevel)
+    }
 }
 
 struct CoachProfileSnapshot: Codable, Hashable {
