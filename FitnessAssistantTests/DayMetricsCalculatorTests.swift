@@ -70,4 +70,157 @@ final class DayMetricsCalculatorTests: XCTestCase {
         XCTAssertEqual(metrics.carbsGrams, 80, accuracy: 0.001)
         XCTAssertEqual(metrics.fatGrams, 25, accuracy: 0.001)
     }
+
+    func testHealthKitRestingEnergyWinsAndMissingValueFallsBackToBMR() {
+        let now = Date()
+        let profile = makeProfile()
+        let health = HealthSnapshot(
+            date: now,
+            steps: 0,
+            activeEnergyKcal: 300,
+            basalEnergyKcal: 1_520,
+            averageHeartRate: nil,
+            restingHeartRate: nil,
+            sleepHours: nil,
+            workouts: [],
+            bodyMetrics: HealthBodyMetrics()
+        )
+
+        let healthMetrics = DayMetricsCalculator.metrics(
+            for: now,
+            profile: profile,
+            meals: [],
+            exercises: [],
+            dayLogs: [],
+            trainingPlans: [],
+            healthSnapshot: health
+        )
+        XCTAssertEqual(healthMetrics.restingCalories, 1_520, accuracy: 0.001)
+        XCTAssertEqual(healthMetrics.restingEnergySource.rawValue, RestingEnergySource.healthKit.rawValue)
+
+        let fallbackMetrics = DayMetricsCalculator.metrics(
+            for: now,
+            profile: profile,
+            meals: [],
+            exercises: [],
+            dayLogs: [],
+            trainingPlans: []
+        )
+        XCTAssertEqual(fallbackMetrics.restingCalories, fallbackMetrics.bmrEstimate, accuracy: 0.001)
+        XCTAssertEqual(fallbackMetrics.restingEnergySource.rawValue, RestingEnergySource.bmrEstimate.rawValue)
+    }
+
+    func testConfirmedDayLogWeightWinsOverHealthKitSnapshot() {
+        let now = Date()
+        let profile = makeProfile()
+        let log = DayLog(date: now, weightKg: 79.35)
+        let health = HealthSnapshot(
+            date: now,
+            steps: 0,
+            activeEnergyKcal: 0,
+            basalEnergyKcal: nil,
+            averageHeartRate: nil,
+            restingHeartRate: nil,
+            sleepHours: nil,
+            workouts: [],
+            bodyMetrics: HealthBodyMetrics(weightKg: 89.35)
+        )
+
+        let metrics = DayMetricsCalculator.metrics(
+            for: now,
+            profile: profile,
+            meals: [],
+            exercises: [],
+            dayLogs: [log],
+            trainingPlans: [],
+            healthSnapshot: health
+        )
+
+        XCTAssertEqual(metrics.weightKg ?? 0, 79.35, accuracy: 0.001)
+    }
+
+    func testWeightAnomalyRejectsMistypedValue() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let logs = (1...7).map { offset in
+            DayLog(
+                date: calendar.date(byAdding: .day, value: -offset, to: today)!,
+                weightKg: 79.2 + Double(offset) * 0.05
+            )
+        }
+
+        XCTAssertNotNil(
+            TrendSafetyAnalyzer.weightAnomaly(
+                proposedKg: 89.35,
+                on: today,
+                dayLogs: logs
+            )
+        )
+        XCTAssertNil(
+            TrendSafetyAnalyzer.weightAnomaly(
+                proposedKg: 79.35,
+                on: today,
+                dayLogs: logs
+            )
+        )
+    }
+
+    func testTrendAveragePlateauAndRecalculationAfterCorrection() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let logs = (0..<14).map { offset in
+            DayLog(
+                date: calendar.date(byAdding: .day, value: -offset, to: today)!,
+                weightKg: 80,
+                intakeCalories: 1_800
+            )
+        }
+
+        let plateau = TrendSafetyAnalyzer.weightTrend(
+            dayLogs: logs,
+            targetWeightKg: 70,
+            currentWeightKg: 80,
+            calendar: calendar
+        )
+        XCTAssertEqual(plateau.sevenDayAverage ?? 0, 80, accuracy: 0.001)
+        XCTAssertTrue(plateau.isPlateau)
+
+        logs[0].weightKg = 79
+        let recalculated = TrendSafetyAnalyzer.weightTrend(
+            dayLogs: logs,
+            targetWeightKg: 70,
+            currentWeightKg: 79,
+            calendar: calendar
+        )
+        XCTAssertNotEqual(
+            plateau.fourteenDayRateKgPerWeek,
+            recalculated.fourteenDayRateKgPerWeek
+        )
+    }
+
+    func testRapidWeightLossCreatesSafetyAlert() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let logs = (0..<7).map { offset in
+            DayLog(
+                date: calendar.date(byAdding: .day, value: -offset, to: today)!,
+                weightKg: 80 + Double(offset) * 0.35,
+                intakeCalories: 1_800
+            )
+        }
+
+        let alerts = TrendSafetyAnalyzer.alerts(dayLogs: logs, currentWeightKg: 80)
+        XCTAssertTrue(alerts.contains { $0.message.contains("1%") })
+    }
+
+    func testFoodAliasMatchesNaturalReference() {
+        let option = FoodOption(
+            name: "原味鸡排",
+            aliases: ["鸡排", "空气炸锅鸡排"]
+        )
+
+        XCTAssertTrue(option.matches("鸡排"))
+        XCTAssertTrue(option.matches("之前那个鸡排"))
+        XCTAssertFalse(option.matches("羊排"))
+    }
 }

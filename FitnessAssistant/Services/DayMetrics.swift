@@ -12,14 +12,18 @@ struct DayMetrics {
     var proteinGrams: Double
     var carbsGrams: Double
     var fatGrams: Double
+    var fiberGrams: Double
+    var vegetableGrams: Double
     // 热量（活动消耗已去重：健康聚合 + 手动，绝不累加单次 workout）
     var healthActiveCalories: Double
     var manualActiveCalories: Double
     var activeCalories: Double
+    var bmrEstimate: Double
     var restingCalories: Double
+    var restingEnergySource: RestingEnergySource
     var totalBurnCalories: Double
     var calorieDeficit: Double
-    // 身体数据（统一回退链：HealthKit → 当天打卡 → 当天总结 → 档案）
+    // 身体数据（体重优先使用 DayLog，避免用户确认值被 HealthKit 覆盖）
     var weightKg: Double?
     var bodyFatPercentage: Double?
     var bodyMassIndex: Double?
@@ -62,6 +66,8 @@ enum DayMetricsCalculator {
         let protein = dayMeals.reduce(0) { $0 + $1.proteinGrams }
         let carbs = dayMeals.reduce(0) { $0 + $1.carbsGrams }
         let fat = dayMeals.reduce(0) { $0 + $1.fatGrams }
+        let fiber = dayMeals.reduce(0) { $0 + $1.fiberGrams }
+        let vegetables = dayMeals.reduce(0) { $0 + $1.vegetableGrams }
 
         // 活动消耗唯一规则：HealthKit 当日聚合（或实时快照）+ 手动补录；绝不累加单次 workout。
         let manualActive = dayExercises
@@ -70,14 +76,21 @@ enum DayMetricsCalculator {
         let aggregate = dayExercises.first(where: isDailyHealthAggregate)
         let healthActive = max(0, healthSnapshot?.activeEnergyKcal ?? aggregate?.activeCalories ?? 0)
         let active = healthActive + manualActive
-        let resting = max(0, CalorieCalculator.bmr(profile: profile))
+        let bmrEstimate = max(0, CalorieCalculator.bmr(profile: profile))
+        let healthResting = healthSnapshot?.basalEnergyKcal
+            ?? ((dayLog?.restingEnergySourceRaw == RestingEnergySource.healthKit.rawValue)
+                ? dayLog?.restingCalories
+                : nil)
+        let restingSource: RestingEnergySource = (healthResting ?? 0) > 0 ? .healthKit : .bmrEstimate
+        let resting = max(0, healthResting ?? bmrEstimate)
         let totalBurn = active + resting
         let deficit = totalBurn - intake
 
-        // 身体数据统一回退链。
+        // DayLog 是体重单一写入口；HealthKit 同步会先更新 DayLog，
+        // 用户确认的更正也保存在 DayLog，因此这里必须优先使用 DayLog。
         let healthMetrics = isToday ? healthSnapshot?.bodyMetrics : nil
-        let weight = healthMetrics?.weightKg
-            ?? positive(dayLog?.weightKg)
+        let weight = positive(dayLog?.weightKg)
+            ?? healthMetrics?.weightKg
             ?? (isToday ? profile.currentWeightKg : nil)
         let bodyFat = healthMetrics?.bodyFatPercentage ?? dayLog?.bodyFatPercentage
         let bmi = healthMetrics?.bodyMassIndex ?? dayLog?.bodyMassIndex
@@ -109,15 +122,22 @@ enum DayMetricsCalculator {
             bodyMetricsMeasuredAt: measuredAt,
             gender: profile.gender.title,
             age: profile.age,
-            bmr: resting,
+            bmr: bmrEstimate,
             intakeCalories: intake,
             activeCalories: active,
+            bmrEstimate: bmrEstimate,
             restingCalories: resting,
             totalBurnCalories: totalBurn,
             calorieDeficit: deficit,
+            restingEnergySource: restingSource.rawValue,
             proteinGrams: protein,
             carbsGrams: carbs,
             fatGrams: fat,
+            fiberGrams: fiber,
+            vegetableGrams: vegetables,
+            restingHeartRate: healthSnapshot?.restingHeartRate ?? dayLog?.restingHeartRate,
+            averageHeartRate: healthSnapshot?.averageHeartRate ?? dayLog?.averageHeartRate,
+            safetyWarnings: dayLog?.safetyWarnings ?? [],
             averageMealConfidence: averageConfidence(dayMeals),
             // 已退役「未确认餐」概念：恒为 0，不再据此扣数据质量分。
             unconfirmedMealCount: 0,
@@ -135,10 +155,14 @@ enum DayMetricsCalculator {
             proteinGrams: protein,
             carbsGrams: carbs,
             fatGrams: fat,
+            fiberGrams: fiber,
+            vegetableGrams: vegetables,
             healthActiveCalories: healthActive,
             manualActiveCalories: manualActive,
             activeCalories: active,
+            bmrEstimate: bmrEstimate,
             restingCalories: resting,
+            restingEnergySource: restingSource,
             totalBurnCalories: totalBurn,
             calorieDeficit: deficit,
             weightKg: weight,
@@ -152,11 +176,9 @@ enum DayMetricsCalculator {
         )
     }
 
-    /// 目标缺口唯一口径：最新训练计划算出的缺口（TDEE − 每日目标热量）优先，否则回退到档案设置。
+    /// 目标缺口唯一口径：始终使用 UserProfile 中的用户设置。
     static func effectiveDeficitTarget(profile: UserProfile, trainingPlans: [TrainingPlan]) -> Double {
-        if let planTarget = trainingPlans.first?.targetDailyDeficitKcal, planTarget > 0 {
-            return planTarget
-        }
+        _ = trainingPlans
         return profile.targetDailyDeficitKcal
     }
 

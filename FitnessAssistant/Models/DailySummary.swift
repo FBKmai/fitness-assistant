@@ -28,10 +28,16 @@ struct DailySnapshot: Codable {
     var restingCalories: Double
     var totalBurnCalories: Double
     var calorieDeficit: Double
+    var restingEnergySource: String = RestingEnergySource.bmrEstimate.rawValue
     // 当日三大营养素合计（克）
     var proteinGrams: Double
     var carbsGrams: Double
     var fatGrams: Double
+    var fiberGrams: Double = 0
+    var vegetableGrams: Double = 0
+    var restingHeartRate: Double? = nil
+    var averageHeartRate: Double? = nil
+    var safetyWarnings: [String] = []
     var averageMealConfidence: Double?
     var unconfirmedMealCount: Int?
     var manualActiveCalories: Double?
@@ -40,57 +46,6 @@ struct DailySnapshot: Codable {
     // 近 7 天趋势（不含今天）
     var recentDays: [DayTrend]
     var analysis: FatLossAnalysis?
-}
-
-struct DietCoachSnapshot: Codable {
-    /// 当前时间，让 AI 判断现在是哪一餐。
-    var requestedAt: Date
-    var goal: String
-    var targetDailyDeficitKcal: Double
-    var heightCm: Double
-    var weightKg: Double
-    var bodyFatPercentage: Double? = nil
-    var bodyMassIndex: Double? = nil
-    var bodyMetricsMeasuredAt: Date? = nil
-    var gender: String
-    var age: Int
-    var bmr: Double
-    var todayIntakeCalories: Double
-    var todayActiveCalories: Double
-    var todayRestingCalories: Double
-    var todayTotalBurnCalories: Double
-    var todayCalorieDeficit: Double
-    var proteinGrams: Double
-    var carbsGrams: Double
-    var fatGrams: Double
-    var averageMealConfidence: Double?
-    var todayMeals: [String]
-    var todayWorkouts: [String]
-    /// 最近几天的饮食记录（不含今天），辅助判断。
-    var recentMeals: [String]
-    /// 最近几天的训练/活动消耗（不含今天）。
-    var recentWorkouts: [String]
-    var selectedFoodOptions: [FoodOptionSnapshot]
-    var recentDays: [DayTrend]
-    var analysis: FatLossAnalysis
-}
-
-/// 「问 AI 怎么吃」多轮对话中的一条消息。
-struct DietCoachTurn: Codable, Identifiable {
-    enum Role: String, Codable {
-        case user
-        case assistant
-    }
-
-    var id = UUID()
-    var role: Role
-    var text: String
-
-    init(id: UUID = UUID(), role: Role, text: String) {
-        self.id = id
-        self.role = role
-        self.text = text
-    }
 }
 
 struct DailyAdvice: Codable {

@@ -40,6 +40,13 @@ enum CoachSuggestedRecordKind: String, Codable {
     case meal
     case exercise
     case checkIn
+    case foodAlias
+}
+
+enum RecordProposalAction: String, Codable {
+    case create
+    case update
+    case remember
 }
 
 struct CoachMemoryPatch: Codable, Hashable {
@@ -97,10 +104,13 @@ struct CoachMemoryPatch: Codable, Hashable {
 
 struct CoachSuggestedRecord: Codable, Identifiable, Hashable {
     var id: UUID
+    var action: RecordProposalAction
     var kind: CoachSuggestedRecordKind
     var title: String
     var note: String
     var date: Date?
+    var existingRecordID: String?
+    var oldValueSummary: String?
 
     var mealTypeRaw: String?
     var textDescription: String?
@@ -122,13 +132,18 @@ struct CoachSuggestedRecord: Codable, Identifiable, Hashable {
     var hungerLevel: Int?
     var mood: String?
     var symptoms: String?
+    var targetFoodOptionID: UUID?
+    var aliases: [String]
 
     init(
         id: UUID = UUID(),
+        action: RecordProposalAction = .create,
         kind: CoachSuggestedRecordKind,
         title: String,
         note: String = "",
         date: Date? = nil,
+        existingRecordID: String? = nil,
+        oldValueSummary: String? = nil,
         mealTypeRaw: String? = nil,
         textDescription: String? = nil,
         totalCalories: Double? = nil,
@@ -146,13 +161,18 @@ struct CoachSuggestedRecord: Codable, Identifiable, Hashable {
         waterMl: Double? = nil,
         hungerLevel: Int? = nil,
         mood: String? = nil,
-        symptoms: String? = nil
+        symptoms: String? = nil,
+        targetFoodOptionID: UUID? = nil,
+        aliases: [String] = []
     ) {
         self.id = id
+        self.action = action
         self.kind = kind
         self.title = title
         self.note = note
         self.date = date
+        self.existingRecordID = existingRecordID
+        self.oldValueSummary = oldValueSummary
         self.mealTypeRaw = mealTypeRaw
         self.textDescription = textDescription
         self.totalCalories = totalCalories
@@ -171,14 +191,19 @@ struct CoachSuggestedRecord: Codable, Identifiable, Hashable {
         self.hungerLevel = hungerLevel
         self.mood = mood
         self.symptoms = symptoms
+        self.targetFoodOptionID = targetFoodOptionID
+        self.aliases = aliases
     }
 
     enum CodingKeys: String, CodingKey {
         case id
+        case action
         case kind
         case title
         case note
         case date
+        case existingRecordID
+        case oldValueSummary
         case mealTypeRaw
         case textDescription
         case totalCalories
@@ -197,15 +222,20 @@ struct CoachSuggestedRecord: Codable, Identifiable, Hashable {
         case hungerLevel
         case mood
         case symptoms
+        case targetFoodOptionID
+        case aliases
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        action = try container.decodeIfPresent(RecordProposalAction.self, forKey: .action) ?? .create
         kind = try container.decode(CoachSuggestedRecordKind.self, forKey: .kind)
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? kind.rawValue
         note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
         date = try Self.decodeDateIfPresent(container, forKey: .date)
+        existingRecordID = try container.decodeIfPresent(String.self, forKey: .existingRecordID)
+        oldValueSummary = try container.decodeIfPresent(String.self, forKey: .oldValueSummary)
         mealTypeRaw = try container.decodeIfPresent(String.self, forKey: .mealTypeRaw)
         textDescription = try container.decodeIfPresent(String.self, forKey: .textDescription)
         totalCalories = try container.decodeIfPresent(Double.self, forKey: .totalCalories)
@@ -224,6 +254,8 @@ struct CoachSuggestedRecord: Codable, Identifiable, Hashable {
         hungerLevel = try container.decodeIfPresent(Int.self, forKey: .hungerLevel)
         mood = try container.decodeIfPresent(String.self, forKey: .mood)
         symptoms = try container.decodeIfPresent(String.self, forKey: .symptoms)
+        targetFoodOptionID = try container.decodeIfPresent(UUID.self, forKey: .targetFoodOptionID)
+        aliases = try container.decodeIfPresent([String].self, forKey: .aliases) ?? []
     }
 
     private static func decodeDateIfPresent(
@@ -286,6 +318,38 @@ struct CoachSuggestedRecord: Codable, Identifiable, Hashable {
     }
 }
 
+/// 新版教练协议名称；保留旧类型名以兼容历史消息 JSON 和迁移。
+typealias RecordProposal = CoachSuggestedRecord
+
+/// 已被「自动记账」写入的记录引用：用于在气泡里渲染「✓ 已记录 · 撤销 / 编辑」，
+/// 并保留被写入实体的类型与 id 以支持撤销/编辑。饮食、运动的 create 提案会自动写入并落到这里。
+struct AppliedRecordRef: Codable, Identifiable, Hashable {
+    var id: UUID            // 原提案 id
+    var kindRaw: String     // CoachSuggestedRecordKind
+    var title: String
+    var entityType: String  // "MealEntry" / "ExerciseEntry"
+    var entityID: String    // 被写入实体的 UUID 字符串
+    var macroSummary: String
+
+    var kind: CoachSuggestedRecordKind { CoachSuggestedRecordKind(rawValue: kindRaw) ?? .meal }
+
+    init(
+        id: UUID,
+        kind: CoachSuggestedRecordKind,
+        title: String,
+        entityType: String,
+        entityID: String,
+        macroSummary: String = ""
+    ) {
+        self.id = id
+        self.kindRaw = kind.rawValue
+        self.title = title
+        self.entityType = entityType
+        self.entityID = entityID
+        self.macroSummary = macroSummary
+    }
+}
+
 struct CoachReplyResult: Codable {
     var replyText: String
     var scenario: CoachScenario
@@ -307,10 +371,16 @@ struct CoachReplyResult: Codable {
         self.riskLevel = riskLevel
     }
 
+    var proposals: [RecordProposal] {
+        get { suggestedRecords }
+        set { suggestedRecords = newValue }
+    }
+
     enum CodingKeys: String, CodingKey {
         case replyText
         case scenario
         case suggestedRecords
+        case proposals
         case memoryPatch
         case riskLevel
     }
@@ -319,7 +389,15 @@ struct CoachReplyResult: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         replyText = try container.decodeIfPresent(String.self, forKey: .replyText) ?? ""
         scenario = try container.decodeIfPresent(CoachScenario.self, forKey: .scenario) ?? .general
-        suggestedRecords = try container.decodeIfPresent([CoachSuggestedRecord].self, forKey: .suggestedRecords) ?? []
+        let proposals = try container.decodeIfPresent(
+            [CoachSuggestedRecord].self,
+            forKey: .proposals
+        )
+        let legacyRecords = try container.decodeIfPresent(
+            [CoachSuggestedRecord].self,
+            forKey: .suggestedRecords
+        )
+        suggestedRecords = proposals ?? legacyRecords ?? []
         memoryPatch = try container.decodeIfPresent(CoachMemoryPatch.self, forKey: .memoryPatch)
         riskLevel = try container.decodeIfPresent(String.self, forKey: .riskLevel) ?? "normal"
     }
@@ -347,6 +425,11 @@ struct CoachDailyMetrics: Codable, Hashable {
     var proteinGrams: Double
     var carbsGrams: Double
     var fatGrams: Double
+    var fiberGrams: Double? = nil
+    var vegetableGrams: Double? = nil
+    var restingEnergySource: String? = nil
+    var restingHeartRate: Double? = nil
+    var averageHeartRate: Double? = nil
     var confirmedMealCount: Int
     var unconfirmedMealCount: Int
     var workoutCount: Int
@@ -409,6 +492,18 @@ struct CoachTrainingPlanSnapshot: Codable, Hashable {
     var trainingDaysPerWeek: Int
     var summary: String
     var updatedAt: Date
+}
+
+struct CoachTrainingSessionSnapshot: Codable, Hashable {
+    var id: UUID
+    var date: Date
+    var title: String
+    var durationMinutes: Double
+    var activeCalories: Double
+    var averageHeartRate: Double?
+    var maxHeartRate: Double?
+    var totalVolumeKg: Double
+    var setCount: Int
 }
 
 struct CoachMemorySnapshot: Codable, Hashable {
@@ -490,6 +585,8 @@ struct CoachContextSnapshot: Codable {
     var trainingPlans: [CoachTrainingPlanSnapshot]
     var memory: CoachMemorySnapshot?
     var recentCarryovers: [CoachDailyCarryoverSnapshot]
+    var trainingPerformance: [CoachTrainingSessionSnapshot]? = nil
+    var safetyAlerts: [String]? = nil
     var analysis: FatLossAnalysis
     var dataQualityNotes: [String]
 }
@@ -569,6 +666,8 @@ final class CoachChatMessage {
     var riskLevel: String
     var contextJSON: String
     var suggestedRecordsJSON: String
+    /// 已自动写入的记录（饮食/运动 create），用于内联「✓ 已记录 · 撤销/编辑」。新增字段带默认值便于轻量迁移。
+    var appliedRecordsJSON: String = ""
     var memoryPatchJSON: String
     var createdAt: Date
 
@@ -609,6 +708,11 @@ final class CoachChatMessage {
     var suggestedRecords: [CoachSuggestedRecord] {
         get { Self.decode([CoachSuggestedRecord].self, from: suggestedRecordsJSON) ?? [] }
         set { suggestedRecordsJSON = Self.encode(newValue) }
+    }
+
+    var appliedRecords: [AppliedRecordRef] {
+        get { Self.decode([AppliedRecordRef].self, from: appliedRecordsJSON) ?? [] }
+        set { appliedRecordsJSON = Self.encode(newValue) }
     }
 
     var memoryPatch: CoachMemoryPatch? {

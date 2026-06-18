@@ -40,6 +40,7 @@
 		FA2000000000000000000027 /* CoachContextBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002B /* CoachContextBuilder.swift */; };
 		FA2000000000000000000028 /* CoachHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002C /* CoachHomeView.swift */; };
 		FA2000000000000000000029 /* FoodHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002D /* FoodHubView.swift */; };
+		FA20000000000000000000D1 /* DataHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA10000000000000000000D1 /* DataHubView.swift */; };
 		FA200000000000000000002A /* CoachContextBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002E /* CoachContextBuilderTests.swift */; };
 		FA200000000000000000002B /* CoachReplyResultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002F /* CoachReplyResultTests.swift */; };
 		FA2000000000000000000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000001C /* Assets.xcassets */; };
@@ -56,6 +57,9 @@
 		FA2000000000000000000033 /* DayLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000033 /* DayLog.swift */; };
 		FA2000000000000000000034 /* DayLogMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000034 /* DayLogMigration.swift */; };
 		FA2000000000000000000035 /* DataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000035 /* DataStore.swift */; };
+		FA2000000000000000000036 /* StructuredHealthModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000036 /* StructuredHealthModels.swift */; };
+		FA2000000000000000000037 /* TrendSafetyAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000037 /* TrendSafetyAnalyzer.swift */; };
+		FA2000000000000000000038 /* GeminiImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000038 /* GeminiImportService.swift */; };
 		FA2000000000000000000032 /* DayMetricsCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000032 /* DayMetricsCalculatorTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -103,6 +107,7 @@
 		FA100000000000000000002B /* CoachContextBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachContextBuilder.swift; sourceTree = "<group>"; };
 		FA100000000000000000002C /* CoachHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachHomeView.swift; sourceTree = "<group>"; };
 		FA100000000000000000002D /* FoodHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoodHubView.swift; sourceTree = "<group>"; };
+		FA10000000000000000000D1 /* DataHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataHubView.swift; sourceTree = "<group>"; };
 		FA1000000000000000000019 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		FA100000000000000000001A /* FitnessAssistant.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FitnessAssistant.entitlements; sourceTree = "<group>"; };
 		FA100000000000000000001B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -123,6 +128,9 @@
 		FA1000000000000000000033 /* DayLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayLog.swift; sourceTree = "<group>"; };
 		FA1000000000000000000034 /* DayLogMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayLogMigration.swift; sourceTree = "<group>"; };
 		FA1000000000000000000035 /* DataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStore.swift; sourceTree = "<group>"; };
+		FA1000000000000000000036 /* StructuredHealthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StructuredHealthModels.swift; sourceTree = "<group>"; };
+		FA1000000000000000000037 /* TrendSafetyAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendSafetyAnalyzer.swift; sourceTree = "<group>"; };
+		FA1000000000000000000038 /* GeminiImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiImportService.swift; sourceTree = "<group>"; };
 		FA1000000000000000000032 /* DayMetricsCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayMetricsCalculatorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -208,6 +216,7 @@
 				FA1000000000000000000007 /* DailySummary.swift */,
 				FA1000000000000000000008 /* AISettings.swift */,
 				FA1000000000000000000033 /* DayLog.swift */,
+				FA1000000000000000000036 /* StructuredHealthModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -230,6 +239,8 @@
 				FA1000000000000000000031 /* WeightWriter.swift */,
 				FA1000000000000000000034 /* DayLogMigration.swift */,
 				FA1000000000000000000035 /* DataStore.swift */,
+				FA1000000000000000000037 /* TrendSafetyAnalyzer.swift */,
+				FA1000000000000000000038 /* GeminiImportService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -248,6 +259,7 @@
 				FA1000000000000000000024 /* DesignSystem.swift */,
 				FA1000000000000000000026 /* FoodOptionsView.swift */,
 				FA100000000000000000002D /* FoodHubView.swift */,
+				FA10000000000000000000D1 /* DataHubView.swift */,
 				FA1000000000000000000028 /* TrainingPlanView.swift */,
 				FA10000000000000000000A1 /* DebugLogView.swift */,
 			);
@@ -416,6 +428,7 @@
 				FA2000000000000000000020 /* DesignSystem.swift in Sources */,
 				FA2000000000000000000022 /* FoodOptionsView.swift in Sources */,
 				FA2000000000000000000029 /* FoodHubView.swift in Sources */,
+				FA20000000000000000000D1 /* DataHubView.swift in Sources */,
 				FA2000000000000000000024 /* TrainingPlanView.swift in Sources */,
 				FA20000000000000000000A0 /* AppLogStore.swift in Sources */,
 				FA20000000000000000000A1 /* DebugLogView.swift in Sources */,
@@ -424,6 +437,9 @@
 				FA2000000000000000000033 /* DayLog.swift in Sources */,
 				FA2000000000000000000034 /* DayLogMigration.swift in Sources */,
 				FA2000000000000000000035 /* DataStore.swift in Sources */,
+				FA2000000000000000000036 /* StructuredHealthModels.swift in Sources */,
+				FA2000000000000000000037 /* TrendSafetyAnalyzer.swift in Sources */,
+				FA2000000000000000000038 /* GeminiImportService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

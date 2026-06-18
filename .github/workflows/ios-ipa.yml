@@ -7,6 +7,7 @@ on:
       - "教练核心"
       - "薄荷"
       - "重构"
+      - "claude"
   workflow_dispatch:
     inputs:
       signing_mode:

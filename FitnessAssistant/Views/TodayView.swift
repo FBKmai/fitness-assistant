@@ -13,10 +13,13 @@ struct TodayView: View {
     @Query(sort: \DayLog.date, order: .reverse) private var dayLogs: [DayLog]
     @Query(sort: \MealAdviceRecord.createdAt, order: .reverse) private var mealAdviceRecords: [MealAdviceRecord]
     @Query(sort: \TrainingPlan.updatedAt, order: .reverse) private var trainingPlans: [TrainingPlan]
+    @Query(sort: \TrainingSession.date, order: .reverse) private var trainingSessions: [TrainingSession]
+    @Query(sort: \DataCorrection.createdAt, order: .reverse) private var corrections: [DataCorrection]
 
     @State private var todayWeightText = ""
+    @State private var pendingWeight: Double?
 
-    /// 由 MainTabView 注入，用于空态快捷按钮切换到「饮食」「运动」Tab。
+    /// 由 MainTabView 注入，用于空态快捷按钮切换到「食物」「趋势」Tab。
     var selection: Binding<Int>? = nil
 
     private var profile: UserProfile? { profiles.first }
@@ -43,8 +46,10 @@ struct TodayView: View {
     private var intakeCalories: Double { todayMetrics?.intakeCalories ?? 0 }
     private var liveActiveCalories: Double { todayMetrics?.activeCalories ?? 0 }
     private var restingCalories: Double { todayMetrics?.restingCalories ?? 0 }
+    private var bmrEstimate: Double { todayMetrics?.bmrEstimate ?? 0 }
+    private var totalBurnCalories: Double { todayMetrics?.totalBurnCalories ?? 0 }
     private var deficit: Double { todayMetrics?.calorieDeficit ?? 0 }
-    /// 目标缺口优先取最新训练计划算出的缺口（TDEE − 每日目标热量），无训练计划时回退到设置里的目标缺口。
+    /// 目标缺口统一取设置页 UserProfile 中的用户配置。
     private var effectiveDeficitTarget: Double {
         guard let profile else { return 0 }
         return DayMetricsCalculator.effectiveDeficitTarget(profile: profile, trainingPlans: trainingPlans)
@@ -76,7 +81,15 @@ struct TodayView: View {
                     }
                     HStack(spacing: AppMetrics.tileSpacing) {
                         MetricTile(title: "活动", value: liveActiveCalories.kcalValue, systemImage: "flame")
-                        MetricTile(title: "基础", value: restingCalories.kcalValue, systemImage: "bed.double")
+                        MetricTile(
+                            title: todayMetrics?.restingEnergySource == .healthKit ? "静息" : "静息(估算)",
+                            value: restingCalories.kcalValue,
+                            systemImage: "bed.double"
+                        )
+                    }
+                    HStack(spacing: AppMetrics.tileSpacing) {
+                        MetricTile(title: "总消耗", value: totalBurnCalories.kcalValue, systemImage: "sum")
+                        MetricTile(title: "BMR估算", value: bmrEstimate.kcalValue, systemImage: "function")
                     }
                     if deficitTarget > 0 {
                         MetricProgressBar(title: "距每日缺口目标 \(Int(deficitTarget)) kcal", current: deficit, target: deficitTarget, tint: deficitTint)
@@ -89,7 +102,7 @@ struct TodayView: View {
                 Section {
                     LabeledTextFieldRow(title: "体重", unit: "kg", text: $todayWeightText)
                     Button {
-                        saveTodayWeight()
+                        prepareToSaveTodayWeight()
                     } label: {
                         Label("保存今日体重", systemImage: "scalemass")
                     }
@@ -97,7 +110,13 @@ struct TodayView: View {
                     Button {
                         Task {
                             guard let profile else { return }
-                            await store.syncHealthOnly(profile: profile, exercises: exercises, dayLogs: dayLogs)
+                            await store.syncHealthOnly(
+                                profile: profile,
+                                exercises: exercises,
+                                dayLogs: dayLogs,
+                                trainingSessions: trainingSessions,
+                                corrections: corrections
+                            )
                             refreshTodayWeightText()
                         }
                     } label: {
@@ -129,7 +148,7 @@ struct TodayView: View {
                             Button {
                                 selection?.wrappedValue = 3
                             } label: {
-                                Label("记录运动", systemImage: "figure.run")
+                                Label("查看训练趋势", systemImage: "chart.xyaxis.line")
                             }
                             .buttonStyle(.bordered)
                         }
@@ -140,6 +159,11 @@ struct TodayView: View {
                     LabeledContent("HealthKit", value: healthKitService.authorizationStatusDescription)
                     LabeledContent("饮食记录", value: "\(todayMeals.count) 条")
                     LabeledContent("运动记录", value: "\(todayExercises.count) 条")
+                    if let metrics = todayMetrics {
+                        LabeledContent("膳食纤维", value: "\(String(format: "%.1f", metrics.fiberGrams)) g")
+                        LabeledContent("蔬菜", value: "\(Int(metrics.vegetableGrams.rounded())) g")
+                        LabeledContent("静息能量来源", value: metrics.restingEnergySource.title)
+                    }
                     if let todayLog {
                         if let sleepHours = todayLog.sleepHours {
                             LabeledContent("睡眠", value: "\(String(format: "%.1f", sleepHours)) 小时")
@@ -159,6 +183,24 @@ struct TodayView: View {
                         LabeledContent("建议生成", value: DateFormatter.shortTime.string(from: generatedAt))
                     } else {
                         LabeledContent("建议生成", value: "未生成")
+                    }
+                    NavigationLink {
+                        TrainingPerformanceView()
+                    } label: {
+                        Label("训练表现与动作组", systemImage: "dumbbell")
+                    }
+                }
+
+                let safetyAlerts = TrendSafetyAnalyzer.alerts(
+                    dayLogs: dayLogs,
+                    currentWeightKg: todayMetrics?.weightKg ?? profile?.currentWeightKg ?? 0
+                )
+                if !safetyAlerts.isEmpty {
+                    Section("安全提醒") {
+                        ForEach(safetyAlerts) { alert in
+                            Label(alert.message, systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(alert.severity == .high ? .red : .orange)
+                        }
                     }
                 }
 
@@ -186,7 +228,15 @@ struct TodayView: View {
                     Button {
                         Task {
                             guard let profile else { return }
-                            await store.syncAndGenerateToday(profile: profile, meals: meals, exercises: exercises, dayLogs: dayLogs, trainingPlans: trainingPlans)
+                            await store.syncAndGenerateToday(
+                                profile: profile,
+                                meals: meals,
+                                exercises: exercises,
+                                dayLogs: dayLogs,
+                                trainingPlans: trainingPlans,
+                                trainingSessions: trainingSessions,
+                                corrections: corrections
+                            )
                         }
                     } label: {
                         if store.isWorking {
@@ -212,6 +262,29 @@ struct TodayView: View {
                 }
             }
             .navigationTitle("今日")
+            .alert("确认异常体重", isPresented: Binding(
+                get: { pendingWeight != nil },
+                set: { if !$0 { pendingWeight = nil } }
+            )) {
+                Button("确认保存") {
+                    if let pendingWeight {
+                        saveTodayWeight(pendingWeight)
+                    }
+                    pendingWeight = nil
+                }
+                Button("取消", role: .cancel) {
+                    pendingWeight = nil
+                }
+            } message: {
+                if let pendingWeight,
+                   let warning = TrendSafetyAnalyzer.weightAnomaly(
+                       proposedKg: pendingWeight,
+                       on: .now,
+                       dayLogs: dayLogs
+                   ) {
+                    Text(warning)
+                }
+            }
             .onAppear {
                 store.configure(context: modelContext, health: healthKitService)
                 refreshTodayWeightText()
@@ -219,15 +292,42 @@ struct TodayView: View {
             .task {
                 store.configure(context: modelContext, health: healthKitService)
                 guard let profile else { return }
-                await store.syncHealthOnly(profile: profile, exercises: exercises, dayLogs: dayLogs, silent: true)
+                await store.syncHealthOnly(
+                    profile: profile,
+                    exercises: exercises,
+                    dayLogs: dayLogs,
+                    trainingSessions: trainingSessions,
+                    corrections: corrections,
+                    silent: true
+                )
                 if todayLog?.hasSummary != true {
-                    await store.syncAndGenerateToday(profile: profile, meals: meals, exercises: exercises, dayLogs: dayLogs, trainingPlans: trainingPlans, silent: true)
+                    await store.syncAndGenerateToday(
+                        profile: profile,
+                        meals: meals,
+                        exercises: exercises,
+                        dayLogs: dayLogs,
+                        trainingPlans: trainingPlans,
+                        trainingSessions: trainingSessions,
+                        corrections: corrections,
+                        silent: true
+                    )
                 }
                 refreshTodayWeightText()
             }
             .onChange(of: todayMealSignature) { _, newValue in
                 guard !newValue.isEmpty, let profile else { return }
-                Task { await store.syncAndGenerateToday(profile: profile, meals: meals, exercises: exercises, dayLogs: dayLogs, trainingPlans: trainingPlans, silent: true) }
+                Task {
+                    await store.syncAndGenerateToday(
+                        profile: profile,
+                        meals: meals,
+                        exercises: exercises,
+                        dayLogs: dayLogs,
+                        trainingPlans: trainingPlans,
+                        trainingSessions: trainingSessions,
+                        corrections: corrections,
+                        silent: true
+                    )
+                }
             }
         }
     }
@@ -242,13 +342,31 @@ struct TodayView: View {
         return (30...250).contains(value)
     }
 
-    private func saveTodayWeight() {
-        guard let profile, let weight = todayWeightValue, isValidWeight(weight) else { return }
+    private func prepareToSaveTodayWeight() {
+        guard let weight = todayWeightValue, isValidWeight(weight) else { return }
+        if TrendSafetyAnalyzer.weightAnomaly(proposedKg: weight, on: .now, dayLogs: dayLogs) != nil {
+            pendingWeight = weight
+        } else {
+            saveTodayWeight(weight)
+        }
+    }
+
+    private func saveTodayWeight(_ weight: Double) {
+        guard let profile, isValidWeight(weight) else { return }
         // 体重唯一写入口（经 DataStore）。保存成功后刷新今日总结。
         guard store.recordWeight(weight, profile: profile, dayLogs: dayLogs) else { return }
         store.statusMessage = "今日体重已保存，正在刷新建议..."
         Task {
-            await store.syncAndGenerateToday(profile: profile, meals: meals, exercises: exercises, dayLogs: dayLogs, trainingPlans: trainingPlans, silent: true)
+            await store.syncAndGenerateToday(
+                profile: profile,
+                meals: meals,
+                exercises: exercises,
+                dayLogs: dayLogs,
+                trainingPlans: trainingPlans,
+                trainingSessions: trainingSessions,
+                corrections: corrections,
+                silent: true
+            )
         }
     }
 }

@@ -30,6 +30,14 @@ final class DayLog {
     var proteinGrams: Double = 0
     var carbsGrams: Double = 0
     var fatGrams: Double = 0
+    var fiberGrams: Double = 0
+    var vegetableGrams: Double = 0
+    /// `healthKit` 表示读取到 Apple 健康基础能量，`bmrEstimate` 表示使用公式估算。
+    var restingEnergySourceRaw: String = "bmrEstimate"
+    var restingHeartRate: Double? = nil
+    var averageHeartRate: Double? = nil
+    var safetyWarningsJSON: String = "[]"
+    var reportIsStale: Bool = false
     // MARK: 当日 AI 建议归档
     var adviceText: String = ""
     var snapshotJSON: String = "{}"
@@ -58,6 +66,13 @@ final class DayLog {
         proteinGrams: Double = 0,
         carbsGrams: Double = 0,
         fatGrams: Double = 0,
+        fiberGrams: Double = 0,
+        vegetableGrams: Double = 0,
+        restingEnergySourceRaw: String = "bmrEstimate",
+        restingHeartRate: Double? = nil,
+        averageHeartRate: Double? = nil,
+        safetyWarnings: [String] = [],
+        reportIsStale: Bool = false,
         adviceText: String = "",
         snapshot: DailySnapshot? = nil,
         generatedAt: Date? = nil,
@@ -83,6 +98,13 @@ final class DayLog {
         self.proteinGrams = proteinGrams
         self.carbsGrams = carbsGrams
         self.fatGrams = fatGrams
+        self.fiberGrams = fiberGrams
+        self.vegetableGrams = vegetableGrams
+        self.restingEnergySourceRaw = restingEnergySourceRaw
+        self.restingHeartRate = restingHeartRate
+        self.averageHeartRate = averageHeartRate
+        self.safetyWarningsJSON = Self.encodeStrings(safetyWarnings)
+        self.reportIsStale = reportIsStale
         self.adviceText = adviceText
         self.snapshotJSON = Self.encodeSnapshot(snapshot)
         self.generatedAt = generatedAt
@@ -112,6 +134,15 @@ final class DayLog {
         set { snapshotJSON = Self.encodeSnapshot(newValue) }
     }
 
+    var safetyWarnings: [String] {
+        get { Self.decodeStrings(safetyWarningsJSON) }
+        set { safetyWarningsJSON = Self.encodeStrings(newValue) }
+    }
+
+    var restingEnergyIsEstimated: Bool {
+        restingEnergySourceRaw != "healthKit"
+    }
+
     private static func encodeSnapshot(_ snapshot: DailySnapshot?) -> String {
         guard let snapshot, let data = try? JSONEncoder().encode(snapshot) else { return "{}" }
         return String(data: data, encoding: .utf8) ?? "{}"
@@ -120,5 +151,15 @@ final class DayLog {
     private static func decodeSnapshot(_ json: String) -> DailySnapshot? {
         guard let data = json.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(DailySnapshot.self, from: data)
+    }
+
+    private static func encodeStrings(_ values: [String]) -> String {
+        guard let data = try? JSONEncoder().encode(values) else { return "[]" }
+        return String(data: data, encoding: .utf8) ?? "[]"
+    }
+
+    private static func decodeStrings(_ json: String) -> [String] {
+        guard let data = json.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([String].self, from: data)) ?? []
     }
 }

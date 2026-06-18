@@ -13,6 +13,8 @@ final class AISettings {
     var visionBaseURL: String = "https://api.xiaomimimo.com/v1"
     var visionModelName: String
     var visionAPIKeychainKey: String = "xiaomi_mimo_api_key"
+    /// 教练回复详细度（简洁/标准/详细）。新增字段带默认值，便于 SwiftData 轻量迁移。
+    var coachVerbosityRaw: String = CoachVerbosity.concise.rawValue
     var createdAt: Date
     var updatedAt: Date
 
@@ -24,6 +26,7 @@ final class AISettings {
         visionBaseURL: String = "https://api.xiaomimimo.com/v1",
         visionModelName: String = "mimo-v2-omni",
         visionAPIKeychainKey: String = "xiaomi_mimo_api_key",
+        coachVerbosity: CoachVerbosity = .concise,
         createdAt: Date = .now,
         updatedAt: Date = .now
     ) {
@@ -34,7 +37,13 @@ final class AISettings {
         self.visionBaseURL = visionBaseURL
         self.visionModelName = visionModelName
         self.visionAPIKeychainKey = visionAPIKeychainKey
+        self.coachVerbosityRaw = coachVerbosity.rawValue
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    var coachVerbosity: CoachVerbosity {
+        get { CoachVerbosity(rawValue: coachVerbosityRaw) ?? .concise }
+        set { coachVerbosityRaw = newValue.rawValue }
     }
 }

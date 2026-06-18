@@ -9,6 +9,8 @@ struct HealthWorkout: Identifiable, Hashable {
     var activityName: String
     var durationMinutes: Double
     var activeCalories: Double
+    var averageHeartRate: Double?
+    var maxHeartRate: Double?
 }
 
 struct HealthBodyMetrics: Hashable {
@@ -27,6 +29,8 @@ struct HealthSnapshot {
     var steps: Double
     var activeEnergyKcal: Double
     var basalEnergyKcal: Double?
+    var averageHeartRate: Double?
+    var restingHeartRate: Double?
     var sleepHours: Double?
     var workouts: [HealthWorkout]
     var bodyMetrics: HealthBodyMetrics
@@ -44,6 +48,9 @@ final class HealthKitService: ObservableObject {
         var types = Set<HKObjectType>()
         if let step = HKQuantityType.quantityType(forIdentifier: .stepCount) { types.insert(step) }
         if let active = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) { types.insert(active) }
+        if let basal = HKQuantityType.quantityType(forIdentifier: .basalEnergyBurned) { types.insert(basal) }
+        if let heartRate = HKQuantityType.quantityType(forIdentifier: .heartRate) { types.insert(heartRate) }
+        if let restingHeartRate = HKQuantityType.quantityType(forIdentifier: .restingHeartRate) { types.insert(restingHeartRate) }
         if let bodyMass = HKQuantityType.quantityType(forIdentifier: .bodyMass) { types.insert(bodyMass) }
         if let bodyFat = HKQuantityType.quantityType(forIdentifier: .bodyFatPercentage) { types.insert(bodyFat) }
         if let bodyMassIndex = HKQuantityType.quantityType(forIdentifier: .bodyMassIndex) { types.insert(bodyMassIndex) }
@@ -78,6 +85,8 @@ final class HealthKitService: ObservableObject {
                 steps: 0,
                 activeEnergyKcal: 0,
                 basalEnergyKcal: nil,
+                averageHeartRate: nil,
+                restingHeartRate: nil,
                 sleepHours: nil,
                 workouts: [],
                 bodyMetrics: HealthBodyMetrics()
@@ -87,12 +96,18 @@ final class HealthKitService: ObservableObject {
         let interval = Calendar.current.dayInterval(containing: date)
         async let stepsValue = quantitySum(.stepCount, unit: .count(), start: interval.start, end: interval.end)
         async let activeEnergyValue = quantitySum(.activeEnergyBurned, unit: .kilocalorie(), start: interval.start, end: interval.end)
+        async let basalEnergyValue = quantitySum(.basalEnergyBurned, unit: .kilocalorie(), start: interval.start, end: interval.end)
+        async let averageHeartRateValue = quantityAverage(.heartRate, unit: .count().unitDivided(by: .minute()), start: interval.start, end: interval.end)
+        async let restingHeartRateValue = latestQuantity(.restingHeartRate, unit: .count().unitDivided(by: .minute()), start: interval.start, end: interval.end)
         async let workoutValues = workouts(start: interval.start, end: interval.end)
         async let bodyMetricsValue = bodyMetrics(start: interval.start, end: interval.end)
         async let sleepHoursValue = sleepHours(start: interval.start, end: interval.end)
 
         let stepCount = try await stepsValue
         let activeEnergy = try await activeEnergyValue
+        let basalEnergy = try await basalEnergyValue
+        let averageHeartRate = try await averageHeartRateValue
+        let restingHeartRate = try await restingHeartRateValue
         let workouts = try await workoutValues
         let bodyMetrics = try await bodyMetricsValue
         let sleepHours = try await sleepHoursValue
@@ -101,7 +116,9 @@ final class HealthKitService: ObservableObject {
             date: date,
             steps: stepCount,
             activeEnergyKcal: activeEnergy,
-            basalEnergyKcal: nil,
+            basalEnergyKcal: basalEnergy > 0 ? basalEnergy : nil,
+            averageHeartRate: averageHeartRate,
+            restingHeartRate: restingHeartRate?.value,
             sleepHours: sleepHours,
             workouts: workouts,
             bodyMetrics: bodyMetrics
@@ -109,6 +126,20 @@ final class HealthKitService: ObservableObject {
         lastSyncDate = .now
         authorizationStatusDescription = "最近同步 \(DateFormatter.shortTime.string(from: .now))"
         return snapshot
+    }
+
+    /// 首次同步最近 90 天，后续调用方可传入更晚的开始日期做增量同步。
+    func fetchSnapshots(from start: Date, through end: Date = .now) async throws -> [HealthSnapshot] {
+        let calendar = Calendar.current
+        var day = calendar.startOfDay(for: start)
+        let lastDay = calendar.startOfDay(for: end)
+        var result: [HealthSnapshot] = []
+        while day <= lastDay {
+            result.append(try await fetchSnapshot(for: day))
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        return result
     }
 
     private func quantitySum(
@@ -133,27 +164,75 @@ final class HealthKitService: ObservableObject {
         }
     }
 
+    private func quantityAverage(
+        _ identifier: HKQuantityTypeIdentifier,
+        unit: HKUnit,
+        start: Date,
+        end: Date
+    ) async throws -> Double? {
+        guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else { return nil }
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate])
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .discreteAverage) { _, result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                continuation.resume(returning: result?.averageQuantity()?.doubleValue(for: unit))
+            }
+            healthStore.execute(query)
+        }
+    }
+
     private func workouts(start: Date, end: Date) async throws -> [HealthWorkout] {
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate])
         let sort = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
 
-        return try await withCheckedThrowingContinuation { continuation in
+        let samples: [HKWorkout] = try await withCheckedThrowingContinuation { continuation in
             let query = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sort]) { _, samples, error in
                 if let error {
                     continuation.resume(throwing: error)
                     return
                 }
-                let workouts = (samples as? [HKWorkout] ?? []).map { workout in
-                    HealthWorkout(
-                        id: workout.uuid.uuidString,
-                        startDate: workout.startDate,
-                        endDate: workout.endDate,
-                        activityName: workout.workoutActivityType.localizedTitle,
-                        durationMinutes: workout.duration / 60,
-                        activeCalories: workout.totalEnergyBurned?.doubleValue(for: .kilocalorie()) ?? 0
-                    )
+                continuation.resume(returning: samples as? [HKWorkout] ?? [])
+            }
+            healthStore.execute(query)
+        }
+        var result: [HealthWorkout] = []
+        for workout in samples {
+            let heartRate = try await heartRateSummary(start: workout.startDate, end: workout.endDate)
+            result.append(HealthWorkout(
+                id: workout.uuid.uuidString,
+                startDate: workout.startDate,
+                endDate: workout.endDate,
+                activityName: workout.workoutActivityType.localizedTitle,
+                durationMinutes: workout.duration / 60,
+                activeCalories: workout.totalEnergyBurned?.doubleValue(for: .kilocalorie()) ?? 0,
+                averageHeartRate: heartRate.average,
+                maxHeartRate: heartRate.maximum
+            ))
+        }
+        return result
+    }
+
+    private func heartRateSummary(start: Date, end: Date) async throws -> (average: Double?, maximum: Double?) {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return (nil, nil) }
+        let unit = HKUnit.count().unitDivided(by: .minute())
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: [.strictStartDate])
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKStatisticsQuery(
+                quantityType: type,
+                quantitySamplePredicate: predicate,
+                options: [.discreteAverage, .discreteMax]
+            ) { _, result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
                 }
-                continuation.resume(returning: workouts)
+                continuation.resume(returning: (
+                    result?.averageQuantity()?.doubleValue(for: unit),
+                    result?.maximumQuantity()?.doubleValue(for: unit)
+                ))
             }
             healthStore.execute(query)
         }

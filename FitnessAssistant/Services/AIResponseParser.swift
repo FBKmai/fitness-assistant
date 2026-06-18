@@ -77,7 +77,7 @@ enum AIResponseParser {
             return CoachReplyResult(
                 replyText: replyText,
                 scenario: extras?.scenario ?? .general,
-                suggestedRecords: extras?.suggestedRecords ?? [],
+                suggestedRecords: extras?.proposals ?? extras?.suggestedRecords ?? [],
                 memoryPatch: extras?.memoryPatch,
                 riskLevel: (extras?.riskLevel?.isEmpty == false) ? extras!.riskLevel! : "normal"
             )
@@ -148,10 +148,11 @@ private struct CoachReplyExtras: Decodable {
     var scenario: CoachScenario?
     var riskLevel: String?
     var suggestedRecords: [CoachSuggestedRecord]?
+    var proposals: [RecordProposal]?
     var memoryPatch: CoachMemoryPatch?
 
     enum CodingKeys: String, CodingKey {
-        case replyText, scenario, riskLevel, suggestedRecords, memoryPatch
+        case replyText, scenario, riskLevel, suggestedRecords, proposals, memoryPatch
     }
 
     init(from decoder: Decoder) throws {
@@ -161,6 +162,7 @@ private struct CoachReplyExtras: Decodable {
         scenario = rawScenario.flatMap { CoachScenario(rawValue: $0) }
         riskLevel = (try? container.decodeIfPresent(String.self, forKey: .riskLevel)) ?? nil
         suggestedRecords = (try? container.decodeIfPresent([CoachSuggestedRecord].self, forKey: .suggestedRecords)) ?? nil
+        proposals = (try? container.decodeIfPresent([RecordProposal].self, forKey: .proposals)) ?? nil
         memoryPatch = (try? container.decodeIfPresent(CoachMemoryPatch.self, forKey: .memoryPatch)) ?? nil
     }
 }

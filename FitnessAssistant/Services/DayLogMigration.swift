@@ -78,3 +78,63 @@ enum DayLogMigration {
         }
     }
 }
+
+/// 新版结构化数据迁移：保留旧 ExerciseEntry，同时为非日聚合运动创建 TrainingSession。
+enum StructuredDataMigration {
+    private static let flagKey = "structuredDataMigratedV2"
+
+    @MainActor
+    static func migrateIfNeeded(_ context: ModelContext) {
+        guard !UserDefaults.standard.bool(forKey: flagKey) else { return }
+
+        let exercises = (try? context.fetch(FetchDescriptor<ExerciseEntry>())) ?? []
+        let sessions = (try? context.fetch(FetchDescriptor<TrainingSession>())) ?? []
+        let oldCoachSessions = (try? context.fetch(FetchDescriptor<CoachChatSession>())) ?? []
+        var existingHealthIDs = Set(sessions.compactMap(\.healthKitWorkoutID))
+        var existingExerciseIDs = Set(sessions.map(\.id))
+
+        for exercise in exercises {
+            let isDailyAggregate = exercise.source == .healthKit
+                && (exercise.healthKitWorkoutID?.hasPrefix("daily-") ?? false)
+            guard !isDailyAggregate else { continue }
+            if let healthID = exercise.healthKitWorkoutID, existingHealthIDs.contains(healthID) {
+                continue
+            }
+            if let sessionID = exercise.trainingSessionID, existingExerciseIDs.contains(sessionID) {
+                continue
+            }
+
+            let session = TrainingSession(
+                date: exercise.date,
+                title: exercise.workoutType.isEmpty ? "训练" : exercise.workoutType,
+                source: exercise.source,
+                durationMinutes: exercise.durationMinutes,
+                activeCalories: exercise.activeCalories,
+                healthKitWorkoutID: exercise.healthKitWorkoutID,
+                averageHeartRate: exercise.averageHeartRate,
+                maxHeartRate: exercise.maxHeartRate,
+                note: "由旧运动记录迁移"
+            )
+            context.insert(session)
+            exercise.trainingSessionID = session.id
+            existingExerciseIDs.insert(session.id)
+            if let healthID = session.healthKitWorkoutID {
+                existingHealthIDs.insert(healthID)
+            }
+        }
+
+        // 旧教练对话保留在数据库中供回滚，但不进入新版教练界面与上下文。
+        for session in oldCoachSessions {
+            session.isArchived = true
+            session.carryoverEnabled = false
+            session.updatedAt = .now
+        }
+
+        do {
+            try context.save()
+            UserDefaults.standard.set(true, forKey: flagKey)
+        } catch {
+            AppLog.error("结构化训练迁移失败：\(error.localizedDescription)", category: "迁移")
+        }
+    }
+}

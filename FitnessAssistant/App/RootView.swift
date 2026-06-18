@@ -21,6 +21,7 @@ struct RootView: View {
             dataStore.configure(context: modelContext, health: healthKitService)
             // Phase B：首次启动把旧 DailySummary+DailyCheckIn 回填进 DayLog（幂等、只跑一次）。
             DayLogMigration.migrateIfNeeded(modelContext)
+            StructuredDataMigration.migrateIfNeeded(modelContext)
         }
     }
 }
@@ -34,29 +35,13 @@ struct MainTabView: View {
                 .tabItem { Label("教练", systemImage: "bubble.left.and.text.bubble.right") }
                 .tag(0)
 
-            TodayView(selection: $selection)
-                .tabItem { Label("今日", systemImage: "gauge.with.dots.needle.67percent") }
+            DataHubView()
+                .tabItem { Label("数据", systemImage: "chart.bar.doc.horizontal") }
                 .tag(1)
-
-            FoodHubView()
-                .tabItem { Label("食物", systemImage: "fork.knife") }
-                .tag(2)
-
-            ExerciseView()
-                .tabItem { Label("运动", systemImage: "figure.run") }
-                .tag(3)
-
-            SummariesView()
-                .tabItem { Label("总结", systemImage: "doc.text.magnifyingglass") }
-                .tag(4)
 
             SettingsView()
                 .tabItem { Label("设置", systemImage: "gearshape") }
-                .tag(5)
-
-            DebugLogView()
-                .tabItem { Label("调试", systemImage: "ladybug") }
-                .tag(6)
+                .tag(2)
         }
     }
 }

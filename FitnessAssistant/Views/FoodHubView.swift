@@ -327,6 +327,8 @@ struct DietCalorieDetailView: View {
     @State private var presentingExercise = false
     @State private var showingMeals = false
     @State private var showingFoodOptions = false
+    @State private var showingTrends = false
+    @State private var showingTrainingPlan = false
 
     private var profile: UserProfile? { profiles.first }
 
@@ -350,6 +352,13 @@ struct DietCalorieDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button { showingTrends = true } label: {
+                        Label("体重与趋势分析", systemImage: "chart.xyaxis.line")
+                    }
+                    Button { showingTrainingPlan = true } label: {
+                        Label("训练计划", systemImage: "figure.strengthtraining.traditional")
+                    }
+                    Divider()
                     Button { showingMeals = true } label: {
                         Label("饮食记录", systemImage: "list.bullet")
                     }
@@ -363,6 +372,8 @@ struct DietCalorieDetailView: View {
         }
         .navigationDestination(isPresented: $showingMeals) { MealsView() }
         .navigationDestination(isPresented: $showingFoodOptions) { FoodOptionsView() }
+        .navigationDestination(isPresented: $showingTrends) { SummariesView() }
+        .navigationDestination(isPresented: $showingTrainingPlan) { TrainingPlanListView() }
         .sheet(item: $presentingNewMeal) { request in
             MealEditorView(initialMealType: request.mealType, initialDate: request.date, autoPresentCamera: request.autoCamera)
         }

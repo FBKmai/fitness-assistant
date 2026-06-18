@@ -15,6 +15,7 @@ final class DataStore {
 
     @ObservationIgnored private var context: ModelContext? = nil
     @ObservationIgnored private var health: HealthKitService? = nil
+    @ObservationIgnored private let healthHistorySyncKey = "healthHistoryLastSyncV2"
 
     nonisolated init() {}
 
@@ -31,9 +32,31 @@ final class DataStore {
     // MARK: - 体重单写入口
 
     @discardableResult
-    func recordWeight(_ kg: Double, on date: Date = .now, profile: UserProfile, dayLogs: [DayLog]) -> Bool {
+    func recordWeight(
+        _ kg: Double,
+        on date: Date = .now,
+        profile: UserProfile,
+        dayLogs: [DayLog],
+        reason: String = "用户手动记录",
+        source: CorrectionSource = .user
+    ) -> Bool {
         guard let context, (30...250).contains(kg) else { return false }
-        WeightWriter.record(kg, on: date, profile: profile, context: context, dayLogs: dayLogs)
+        let existing = dayLogs.first { Calendar.current.isDate($0.date, inSameDayAs: date) }
+        let oldValue = existing?.weightKg ?? 0
+        let log = WeightWriter.record(kg, on: date, profile: profile, context: context, dayLogs: dayLogs)
+        if oldValue > 0, abs(oldValue - kg) > 0.001 {
+            context.insert(DataCorrection(
+                entityType: "DayLog",
+                entityID: Calendar.current.startOfDay(for: date).dayKey,
+                fieldName: "weightKg",
+                oldValue: String(oldValue),
+                newValue: String(kg),
+                effectiveDate: Calendar.current.startOfDay(for: date),
+                reason: reason,
+                source: source
+            ))
+            log.reportIsStale = true
+        }
         do {
             try context.save()
             return true
@@ -46,7 +69,14 @@ final class DataStore {
     // MARK: - HealthKit 同步（唯一入口）
 
     /// 只同步身体数据与运动条目，不生成总结。
-    func syncHealthOnly(profile: UserProfile, exercises: [ExerciseEntry], dayLogs: [DayLog], silent: Bool = false) async {
+    func syncHealthOnly(
+        profile: UserProfile,
+        exercises: [ExerciseEntry],
+        dayLogs: [DayLog],
+        trainingSessions: [TrainingSession] = [],
+        corrections: [DataCorrection] = [],
+        silent: Bool = false
+    ) async {
         guard let context, let health, !isWorking else { return }
         isWorking = true
         if !silent { statusMessage = "正在同步 Apple 健康身体数据..." }
@@ -54,12 +84,24 @@ final class DataStore {
 
         do {
             try? await health.requestAuthorization()
-            let snapshot = try await health.fetchSnapshot(for: .now)
-            upsertHealthEntries(snapshot, profile: profile, exercises: exercises, context: context)
-            refreshTodayLogFromHealth(snapshot, dayLogs: dayLogs, context: context)
+            let activeCorrections = mergedActiveCorrections(corrections, context: context)
+            let snapshots = try await healthSnapshotsForIncrementalSync(health)
+            for snapshot in snapshots {
+                upsertHealthEntries(
+                    snapshot,
+                    profile: profile,
+                    exercises: exercises,
+                    trainingSessions: trainingSessions,
+                    corrections: activeCorrections,
+                    context: context
+                )
+                refreshDayLogFromHealth(snapshot, dayLogs: dayLogs, corrections: activeCorrections, context: context)
+            }
             try context.save()
+            UserDefaults.standard.set(Date.now, forKey: healthHistorySyncKey)
+            let snapshot = snapshots.last
             if !silent {
-                statusMessage = snapshot.bodyMetrics.hasAnyValue
+                statusMessage = snapshot?.bodyMetrics.hasAnyValue == true
                     ? "已同步 Apple 健康身体数据 \(DateFormatter.shortTime.string(from: .now))"
                     : "Apple 健康今天还没有体脂秤数据，可先手动保存体重。"
             }
@@ -76,6 +118,8 @@ final class DataStore {
         exercises: [ExerciseEntry],
         dayLogs: [DayLog],
         trainingPlans: [TrainingPlan],
+        trainingSessions: [TrainingSession] = [],
+        corrections: [DataCorrection] = [],
         silent: Bool = false
     ) async {
         guard let context, let health, !isWorking else { return }
@@ -85,9 +129,17 @@ final class DataStore {
 
         do {
             try? await health.requestAuthorization()
+            let activeCorrections = mergedActiveCorrections(corrections, context: context)
             let snapshot = try await health.fetchSnapshot(for: .now)
-            upsertHealthEntries(snapshot, profile: profile, exercises: exercises, context: context)
-            refreshTodayLogFromHealth(snapshot, dayLogs: dayLogs, context: context)
+            upsertHealthEntries(
+                snapshot,
+                profile: profile,
+                exercises: exercises,
+                trainingSessions: trainingSessions,
+                corrections: activeCorrections,
+                context: context
+            )
+            refreshDayLogFromHealth(snapshot, dayLogs: dayLogs, corrections: activeCorrections, context: context)
             generateTodaySummary(profile: profile, meals: meals, exercises: exercises, dayLogs: dayLogs, trainingPlans: trainingPlans, healthSnapshot: snapshot, context: context)
             try context.save()
             statusMessage = "已更新 \(DateFormatter.shortTime.string(from: .now))"
@@ -108,8 +160,24 @@ final class DataStore {
         return log
     }
 
-    private func upsertHealthEntries(_ snapshot: HealthSnapshot, profile: UserProfile, exercises: [ExerciseEntry], context: ModelContext) {
-        if let weight = snapshot.bodyMetrics.weightKg, (30...250).contains(weight) {
+    private func upsertHealthEntries(
+        _ snapshot: HealthSnapshot,
+        profile: UserProfile,
+        exercises: [ExerciseEntry],
+        trainingSessions: [TrainingSession],
+        corrections: [DataCorrection],
+        context: ModelContext
+    ) {
+        let currentWeightIsCorrected = corrections.contains {
+            $0.isActive
+                && $0.entityType == "DayLog"
+                && $0.fieldName == "weightKg"
+                && Calendar.current.isDate($0.effectiveDate, inSameDayAs: snapshot.date)
+        }
+        if !currentWeightIsCorrected,
+           Calendar.current.isDateInToday(snapshot.date),
+           let weight = snapshot.bodyMetrics.weightKg,
+           (30...250).contains(weight) {
             profile.currentWeightKg = weight
             profile.updatedAt = .now
         }
@@ -120,6 +188,7 @@ final class DataStore {
             aggregate.workoutType = "每日活动合计"
             aggregate.activeCalories = snapshot.activeEnergyKcal
             aggregate.steps = snapshot.steps
+            aggregate.averageHeartRate = snapshot.averageHeartRate
         } else {
             context.insert(ExerciseEntry(
                 date: snapshot.date,
@@ -127,7 +196,8 @@ final class DataStore {
                 workoutType: "每日活动合计",
                 activeCalories: snapshot.activeEnergyKcal,
                 steps: snapshot.steps,
-                healthKitWorkoutID: aggregateID
+                healthKitWorkoutID: aggregateID,
+                averageHeartRate: snapshot.averageHeartRate
             ))
         }
 
@@ -137,6 +207,8 @@ final class DataStore {
                 existing.workoutType = workout.activityName
                 existing.durationMinutes = workout.durationMinutes
                 existing.activeCalories = workout.activeCalories
+                existing.averageHeartRate = workout.averageHeartRate
+                existing.maxHeartRate = workout.maxHeartRate
             } else {
                 context.insert(ExerciseEntry(
                     date: workout.startDate,
@@ -144,16 +216,58 @@ final class DataStore {
                     workoutType: workout.activityName,
                     durationMinutes: workout.durationMinutes,
                     activeCalories: workout.activeCalories,
-                    healthKitWorkoutID: workout.id
+                    healthKitWorkoutID: workout.id,
+                    averageHeartRate: workout.averageHeartRate,
+                    maxHeartRate: workout.maxHeartRate
+                ))
+            }
+
+            if let session = trainingSessions.first(where: { $0.healthKitWorkoutID == workout.id }) {
+                session.date = workout.startDate
+                session.title = workout.activityName
+                session.durationMinutes = workout.durationMinutes
+                session.activeCalories = workout.activeCalories
+                session.averageHeartRate = workout.averageHeartRate
+                session.maxHeartRate = workout.maxHeartRate
+                session.updatedAt = .now
+            } else {
+                context.insert(TrainingSession(
+                    date: workout.startDate,
+                    title: workout.activityName,
+                    source: .healthKit,
+                    durationMinutes: workout.durationMinutes,
+                    activeCalories: workout.activeCalories,
+                    healthKitWorkoutID: workout.id,
+                    averageHeartRate: workout.averageHeartRate,
+                    maxHeartRate: workout.maxHeartRate
                 ))
             }
         }
     }
 
-    private func refreshTodayLogFromHealth(_ snapshot: HealthSnapshot, dayLogs: [DayLog], context: ModelContext) {
-        guard snapshot.bodyMetrics.hasAnyValue || snapshot.sleepHours != nil else { return }
-        let log = upsertTodayLog(dayLogs, context: context)
-        if let weight = snapshot.bodyMetrics.weightKg, (30...250).contains(weight) {
+    private func refreshDayLogFromHealth(
+        _ snapshot: HealthSnapshot,
+        dayLogs: [DayLog],
+        corrections: [DataCorrection],
+        context: ModelContext
+    ) {
+        let hasEnergy = (snapshot.basalEnergyKcal ?? 0) > 0 || snapshot.activeEnergyKcal > 0
+        guard snapshot.bodyMetrics.hasAnyValue || snapshot.sleepHours != nil || hasEnergy else { return }
+        let day = Calendar.current.startOfDay(for: snapshot.date)
+        let log = dayLogs.first { Calendar.current.isDate($0.date, inSameDayAs: day) } ?? {
+            let value = DayLog(date: day)
+            context.insert(value)
+            return value
+        }()
+        let weightIsCorrected = corrections.contains {
+            $0.isActive
+                && $0.entityType == "DayLog"
+                && $0.fieldName == "weightKg"
+                && Calendar.current.isDate($0.effectiveDate, inSameDayAs: day)
+        }
+        if !weightIsCorrected,
+           let weight = snapshot.bodyMetrics.weightKg,
+           (30...250).contains(weight) {
             log.weightKg = weight
         }
         if let bodyFat = snapshot.bodyMetrics.bodyFatPercentage {
@@ -165,10 +279,37 @@ final class DataStore {
         if let sleepHours = snapshot.sleepHours {
             log.sleepHours = sleepHours
         }
+        if let basal = snapshot.basalEnergyKcal, basal > 0 {
+            log.restingCalories = basal
+            log.restingEnergySourceRaw = RestingEnergySource.healthKit.rawValue
+        }
+        log.activeCalories = max(0, snapshot.activeEnergyKcal)
+        log.averageHeartRate = snapshot.averageHeartRate
+        log.restingHeartRate = snapshot.restingHeartRate
         if snapshot.bodyMetrics.hasAnyValue {
             log.bodyMetricsSyncedAt = snapshot.bodyMetrics.measuredAt ?? .now
         }
         log.updatedAt = .now
+    }
+
+    private func healthSnapshotsForIncrementalSync(_ health: HealthKitService) async throws -> [HealthSnapshot] {
+        let calendar = Calendar.current
+        let lastSync = UserDefaults.standard.object(forKey: healthHistorySyncKey) as? Date
+        let fallback = calendar.date(byAdding: .day, value: -89, to: .now) ?? .now
+        let start = lastSync.flatMap { calendar.date(byAdding: .day, value: -1, to: $0) } ?? fallback
+        return try await health.fetchSnapshots(from: start, through: .now)
+    }
+
+    private func mergedActiveCorrections(
+        _ provided: [DataCorrection],
+        context: ModelContext
+    ) -> [DataCorrection] {
+        let stored = (try? context.fetch(FetchDescriptor<DataCorrection>())) ?? []
+        var valuesByID: [UUID: DataCorrection] = [:]
+        for correction in provided + stored where correction.isActive {
+            valuesByID[correction.id] = correction
+        }
+        return Array(valuesByID.values)
     }
 
     private func generateTodaySummary(
@@ -199,6 +340,15 @@ final class DataStore {
         log.proteinGrams = metrics.proteinGrams
         log.carbsGrams = metrics.carbsGrams
         log.fatGrams = metrics.fatGrams
+        log.fiberGrams = metrics.fiberGrams
+        log.vegetableGrams = metrics.vegetableGrams
+        log.restingEnergySourceRaw = metrics.restingEnergySource.rawValue
+        log.averageHeartRate = healthSnapshot?.averageHeartRate ?? log.averageHeartRate
+        log.restingHeartRate = healthSnapshot?.restingHeartRate ?? log.restingHeartRate
+        log.safetyWarnings = TrendSafetyAnalyzer.alerts(
+            dayLogs: dayLogs,
+            currentWeightKg: metrics.weightKg ?? profile.currentWeightKg
+        ).map(\.message)
         if let weight = metrics.weightKg { log.weightKg = weight }
         if let bodyFat = metrics.bodyFatPercentage { log.bodyFatPercentage = bodyFat }
         if let bmi = metrics.bodyMassIndex { log.bodyMassIndex = bmi }
@@ -206,6 +356,7 @@ final class DataStore {
         log.adviceText = Self.localSummaryText(snapshot: snapshot)
         log.snapshot = snapshot
         log.generatedAt = .now
+        log.reportIsStale = false
         log.updatedAt = .now
     }
 

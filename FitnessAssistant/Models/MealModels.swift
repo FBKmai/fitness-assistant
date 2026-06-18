@@ -44,6 +44,8 @@ struct MealEstimate: Codable {
     var proteinGrams: Double
     var carbsGrams: Double
     var fatGrams: Double
+    var fiberGrams: Double?
+    var vegetableGrams: Double?
     var confidence: Double
     var summary: String
 }
@@ -92,6 +94,8 @@ final class MealEntry {
     var proteinGrams: Double
     var carbsGrams: Double
     var fatGrams: Double
+    var fiberGrams: Double = 0
+    var vegetableGrams: Double = 0
     var confidence: Double
     var isConfirmed: Bool
     var createdAt: Date
@@ -110,6 +114,8 @@ final class MealEntry {
         proteinGrams: Double = 0,
         carbsGrams: Double = 0,
         fatGrams: Double = 0,
+        fiberGrams: Double = 0,
+        vegetableGrams: Double = 0,
         confidence: Double = 0,
         isConfirmed: Bool = false,
         createdAt: Date = .now,
@@ -127,6 +133,8 @@ final class MealEntry {
         self.proteinGrams = proteinGrams
         self.carbsGrams = carbsGrams
         self.fatGrams = fatGrams
+        self.fiberGrams = fiberGrams
+        self.vegetableGrams = vegetableGrams
         self.confidence = confidence
         self.isConfirmed = isConfirmed
         self.createdAt = createdAt

@@ -14,6 +14,8 @@ struct CoachHomeView: View {
     @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
     @Query(sort: \DayLog.date, order: .reverse) private var dayLogs: [DayLog]
     @Query(sort: \TrainingPlan.updatedAt, order: .reverse) private var trainingPlans: [TrainingPlan]
+    @Query(sort: \TrainingSession.date, order: .reverse) private var trainingSessions: [TrainingSession]
+    @Query(sort: \DataCorrection.createdAt, order: .reverse) private var corrections: [DataCorrection]
     @Query(sort: \CoachMemory.updatedAt, order: .reverse) private var memories: [CoachMemory]
     @Query(sort: \CoachChatSession.updatedAt, order: .reverse) private var sessions: [CoachChatSession]
     @Query(sort: \CoachChatMessage.createdAt, order: .forward) private var allMessages: [CoachChatMessage]
@@ -23,11 +25,12 @@ struct CoachHomeView: View {
     @State private var isCompressing = false
     @State private var errorMessage: String?
     @State private var carryoverErrorMessage: String?
-    @State private var showContext = false
     @State private var showingContextManager = false
     @State private var selectedDay = Calendar.current.startOfDay(for: .now)
     @State private var photoItems: [PhotosPickerItem] = []
     @State private var imageDataList: [Data] = []
+    @State private var pendingProposal: RecordProposal?
+    @State private var editingMeal: MealEntry?
     @FocusState private var inputFocused: Bool
 
     private let bottomID = "coach-bottom"
@@ -57,6 +60,7 @@ struct CoachHomeView: View {
             exercises: exercises,
             foodOptions: foodOptions,
             trainingPlans: trainingPlans,
+            trainingSessions: trainingSessions,
             memory: memory,
             carryovers: carryoverSnapshots
         )
@@ -76,21 +80,20 @@ struct CoachHomeView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
-                            daySwitcher
-                            if isSelectedToday {
-                                quickActions
-                            } else {
+                            if !isSelectedToday {
                                 historicalNotice
                             }
-                            contextCard
 
                             if messages.isEmpty {
                                 emptyCoachHint
                             } else {
                                 ForEach(messages) { message in
-                                    CoachChatBubble(message: message) { record in
-                                        saveSuggestedRecord(record, from: message)
-                                    }
+                                    CoachChatBubble(
+                                        message: message,
+                                        onUndo: { ref in undoAppliedRecord(ref, from: message) },
+                                        onEdit: { ref in editAppliedRecord(ref) },
+                                        onSaveRecord: { record in saveSuggestedRecord(record, from: message) }
+                                    )
                                 }
                             }
 
@@ -134,13 +137,33 @@ struct CoachHomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        input = "请结合今天和最近 7 天的数据，帮我做一次每日复盘，并告诉我明天怎么吃、怎么练。"
+                    Menu {
+                        Button {
+                            input = "请结合今天和最近 7 天的数据，帮我做一次每日复盘，并告诉我明天怎么吃、怎么练。"
+                            inputFocused = true
+                        } label: {
+                            Label("生成今日复盘", systemImage: "doc.text.magnifyingglass")
+                        }
+                        .disabled(!isSelectedToday)
+
+                        Menu {
+                            Button("今天") { selectedDay = todayStart }
+                            ForEach(availableSessionDays, id: \.self) { day in
+                                Button(DateFormatter.dateHeader.string(from: day)) { selectedDay = day }
+                            }
+                        } label: {
+                            Label("历史对话", systemImage: "clock.arrow.circlepath")
+                        }
+
+                        Button {
+                            showingContextManager = true
+                        } label: {
+                            Label("上下文与记忆", systemImage: "slider.horizontal.3")
+                        }
                     } label: {
-                        Image(systemName: "doc.text.magnifyingglass")
+                        Image(systemName: "ellipsis.circle")
                     }
-                    .accessibilityLabel("生成复盘问题")
-                    .disabled(!isSelectedToday)
+                    .accessibilityLabel("更多")
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -152,6 +175,19 @@ struct CoachHomeView: View {
             }
             .sheet(isPresented: $showingContextManager) {
                 CoachContextManagerView(sessions: sessions, memory: memory)
+            }
+            .sheet(item: $editingMeal) { meal in
+                MealEditorView(meal: meal)
+            }
+            .alert(item: $pendingProposal) { proposal in
+                Alert(
+                    title: Text(proposal.action == .update ? "确认更正" : "确认保存"),
+                    message: Text(proposalConfirmationText(proposal)),
+                    primaryButton: .default(Text("确认")) {
+                        applyProposal(proposal)
+                    },
+                    secondaryButton: .cancel(Text("取消"))
+                )
             }
             .onAppear {
                 selectedDay = todayStart
@@ -166,60 +202,6 @@ struct CoachHomeView: View {
             .onChange(of: photoItems) { _, newValue in
                 Task { await loadImages(from: newValue) }
             }
-        }
-    }
-
-    private var quickActions: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                quickButton("现在怎么吃", "现在这一餐怎么吃？食物选项只是参考，也可以另外推荐。请结合我今天已经吃的、最近的运动消耗和热量趋势给具体份量。")
-                quickButton("刚吃完复盘", "我刚吃完这一餐，请帮我判断这顿对减脂的影响，并给下一步补救建议。")
-                quickButton("练前安排", "我准备去训练，现在适合练吗？练前要不要吃点什么？")
-                quickButton("每日复盘", "请做今天的完整复盘，指出热量缺口、蛋白、睡眠和明天安排。")
-                quickButton("能不能吃", "我现在想吃这个，帮我按红灯/黄灯/绿灯判断。")
-            }
-            .padding(.horizontal, 1)
-        }
-    }
-
-    private var daySwitcher: some View {
-        HStack(spacing: 10) {
-            Menu {
-                Button("今天") {
-                    selectedDay = todayStart
-                }
-                ForEach(availableSessionDays, id: \.self) { day in
-                    Button(DateFormatter.dateHeader.string(from: day)) {
-                        selectedDay = day
-                    }
-                }
-            } label: {
-                Label(
-                    isSelectedToday ? "今天" : DateFormatter.dateHeader.string(from: selectedDay),
-                    systemImage: "calendar"
-                )
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-
-            if isCompressing {
-                HStack(spacing: 6) {
-                    ProgressView()
-                    Text("正在整理昨日上下文")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Spacer()
-
-            Button {
-                showingContextManager = true
-            } label: {
-                Label("上下文", systemImage: "slider.horizontal.3")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
         }
     }
 
@@ -249,57 +231,24 @@ struct CoachHomeView: View {
         .font(.caption)
     }
 
-    private var contextCard: some View {
-        DisclosureGroup(isExpanded: $showContext) {
-            if let context = currentContext {
-                VStack(alignment: .leading, spacing: 8) {
-                    LabeledContent("目标", value: "\(context.profile.goal) · 每日缺口 \(Int(context.profile.targetDailyDeficitKcal)) kcal")
-                    LabeledContent("今日记录", value: "\(context.today.confirmedMealCount) 餐 · \(context.today.workoutCount) 次训练")
-                    LabeledContent("近 7 天", value: "\(context.recent7Days.count) 天趋势")
-                    LabeledContent("结转要点", value: "\(context.recentCarryovers.count) 天")
-                    LabeledContent("食物选项", value: "\(context.foodOptions.count) 个")
-                    LabeledContent("训练计划", value: "\(context.trainingPlans.count) 个")
-                    if let memory = context.memory {
-                        LabeledContent("长期记忆", value: "\(memory.foodPreferences.count + memory.trainingPreferences.count + memory.rules.count) 条")
-                    }
-                    if !context.dataQualityNotes.isEmpty {
-                        Text(context.dataQualityNotes.joined(separator: "；"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Button {
-                        showingContextManager = true
-                    } label: {
-                        Label("管理上下文", systemImage: "slider.horizontal.3")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-                .font(.callout)
-                .padding(.top, 4)
-            } else {
-                Text("缺少用户资料，暂时无法构建上下文。")
-                    .foregroundStyle(.secondary)
-            }
-        } label: {
-            Label("AI 将读取的上下文", systemImage: "chart.bar.doc.horizontal")
-                .font(.subheadline.weight(.semibold))
-        }
-        .padding(12)
-        .background(Color.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cardCornerRadius))
-    }
-
     private var emptyCoachHint: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             Image(systemName: "bubble.left.and.text.bubble.right")
                 .font(.largeTitle)
                 .foregroundStyle(.secondary)
-            Text("从这里和 AI 教练长期对话")
+            Text("像聊天一样记录和提问")
                 .font(.headline)
-            Text("可以问饭前饭后、外卖点单、训练前后、体重波动、睡眠恢复、感冒能不能练。AI 会结合本地饮食、运动、训练计划和长期记忆给建议。")
+            Text("随口说「早餐俩鸡蛋一杯豆浆」就会自动记账；也可以问现在怎么吃、这个能不能吃、刚练完怎么补。AI 会结合本地饮食、运动、体重趋势和长期记忆给建议。")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    quickButton("现在怎么吃", "现在这一餐怎么吃？请结合我今天已经吃的、最近的运动消耗和热量趋势给具体份量。")
+                    quickButton("这个能不能吃", "我现在想吃这个，帮我按红灯/黄灯/绿灯判断。")
+                    quickButton("每日复盘", "请做今天的完整复盘，指出热量缺口、蛋白、睡眠和明天安排。")
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 24)
@@ -391,7 +340,9 @@ struct CoachHomeView: View {
 
     private func session(for day: Date) -> CoachChatSession? {
         let targetDay = Calendar.current.startOfDay(for: day)
-        return sessions.first { Calendar.current.isDate($0.dayDate, inSameDayAs: targetDay) }
+        return sessions.first {
+            !$0.isArchived && Calendar.current.isDate($0.dayDate, inSameDayAs: targetDay)
+        }
     }
 
     private func messages(for session: CoachChatSession) -> [CoachChatMessage] {
@@ -400,6 +351,7 @@ struct CoachHomeView: View {
 
     private var availableSessionDays: [Date] {
         let days = sessions
+            .filter { !$0.isArchived }
             .map { Calendar.current.startOfDay(for: $0.dayDate) }
             .filter { !Calendar.current.isDate($0, inSameDayAs: todayStart) }
         return Array(Set(days)).sorted(by: >)
@@ -474,7 +426,6 @@ struct CoachHomeView: View {
         let activeSession = ensureSession()
         input = ""
         inputFocused = false
-        showContext = false
         errorMessage = nil
 
         let userMessage = CoachChatMessage(sessionID: activeSession.id, role: .user, text: text)
@@ -499,7 +450,6 @@ struct CoachHomeView: View {
                 settings: settings
             )
             insertAssistantMessage(result, context: context, session: activeSession)
-            applyMemoryPatch(result.memoryPatch)
             imageDataList = []
             photoItems = []
         } catch {
@@ -522,6 +472,10 @@ struct CoachHomeView: View {
         modelContext.insert(assistantMessage)
         session.lastMessageText = result.replyText
         session.updatedAt = .now
+        // 长期记忆补丁直接合并（持久化记忆，不需要用户逐条确认）。
+        applyMemoryPatch(result.memoryPatch)
+        // 混合自动记账：饮食/运动的 create 提案立即写入，气泡内联「✓ 已记录·撤销/编辑」。
+        autoApplyProposals(for: assistantMessage)
         try? modelContext.save()
     }
 
@@ -535,14 +489,150 @@ struct CoachHomeView: View {
         try? modelContext.save()
     }
 
-    private func saveSuggestedRecord(_ record: CoachSuggestedRecord, from message: CoachChatMessage) {
+    /// 混合自动记账：饮食 / 运动的 `create` 提案立即写入并落到 `appliedRecords`；
+    /// 体重（checkIn）与任意 `update`（更正旧数据）以及 foodAlias 仍留在 `suggestedRecords`，由用户确认。
+    private func autoApplyProposals(for message: CoachChatMessage) {
+        var remaining: [CoachSuggestedRecord] = []
+        var applied = message.appliedRecords
+        for record in message.suggestedRecords {
+            let isAutoKind = record.kind == .meal || record.kind == .exercise
+            if isAutoKind, record.action == .create, let ref = applyCreateRecord(record) {
+                applied.append(ref)
+            } else {
+                remaining.append(record)
+            }
+        }
+        message.suggestedRecords = remaining
+        message.appliedRecords = applied
+    }
+
+    /// 写入一条饮食/运动 create 记录，返回用于内联展示与撤销的引用。
+    private func applyCreateRecord(_ record: CoachSuggestedRecord) -> AppliedRecordRef? {
         switch record.kind {
         case .meal:
-            if let meal = record.makeMealEntry() {
+            guard let meal = record.makeMealEntry() else { return nil }
+            modelContext.insert(meal)
+            return AppliedRecordRef(
+                id: record.id,
+                kind: .meal,
+                title: record.title,
+                entityType: "MealEntry",
+                entityID: meal.id.uuidString,
+                macroSummary: appliedMealMacroText(record)
+            )
+        case .exercise:
+            guard let exercise = record.makeExerciseEntry() else { return nil }
+            modelContext.insert(exercise)
+            return AppliedRecordRef(
+                id: record.id,
+                kind: .exercise,
+                title: record.title,
+                entityType: "ExerciseEntry",
+                entityID: exercise.id.uuidString,
+                macroSummary: appliedExerciseText(record)
+            )
+        default:
+            return nil
+        }
+    }
+
+    /// 撤销一条已自动写入的记录：删除对应实体并移除内联引用。
+    private func undoAppliedRecord(_ ref: AppliedRecordRef, from message: CoachChatMessage) {
+        switch ref.entityType {
+        case "MealEntry":
+            if let id = UUID(uuidString: ref.entityID), let meal = meals.first(where: { $0.id == id }) {
+                modelContext.delete(meal)
+            }
+        case "ExerciseEntry":
+            if let id = UUID(uuidString: ref.entityID), let exercise = exercises.first(where: { $0.id == id }) {
+                modelContext.delete(exercise)
+            }
+        default:
+            break
+        }
+        message.appliedRecords.removeAll { $0.id == ref.id }
+        do {
+            try modelContext.save()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// 编辑一条已自动写入的饮食记录（运动暂不支持编辑，可撤销后重记）。
+    private func editAppliedRecord(_ ref: AppliedRecordRef) {
+        guard ref.entityType == "MealEntry",
+              let id = UUID(uuidString: ref.entityID),
+              let meal = meals.first(where: { $0.id == id }) else { return }
+        editingMeal = meal
+    }
+
+    private func appliedMealMacroText(_ record: CoachSuggestedRecord) -> String {
+        var parts: [String] = []
+        if let cal = record.totalCalories, cal > 0 { parts.append(cal.kcalText) }
+        if let p = record.proteinGrams, p > 0 { parts.append("蛋白\(Int(p.rounded()))g") }
+        if let c = record.carbsGrams, c > 0 { parts.append("碳水\(Int(c.rounded()))g") }
+        if let f = record.fatGrams, f > 0 { parts.append("脂肪\(Int(f.rounded()))g") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func appliedExerciseText(_ record: CoachSuggestedRecord) -> String {
+        var parts: [String] = []
+        if let mins = record.durationMinutes, mins > 0 { parts.append("\(Int(mins.rounded())) 分钟") }
+        if let cal = record.activeCalories, cal > 0 { parts.append(cal.kcalText) }
+        return parts.joined(separator: " · ")
+    }
+
+    private func saveSuggestedRecord(_ record: CoachSuggestedRecord, from message: CoachChatMessage) {
+        _ = message
+        pendingProposal = record
+    }
+
+    private func applyProposal(_ record: RecordProposal) {
+        switch record.kind {
+        case .meal:
+            if record.action == .update,
+               let idText = record.existingRecordID,
+               let id = UUID(uuidString: idText),
+               let meal = meals.first(where: { $0.id == id }) {
+                let oldValue = meal.textDescription
+                meal.textDescription = record.textDescription ?? meal.textDescription
+                meal.totalCalories = max(0, record.totalCalories ?? meal.totalCalories)
+                meal.proteinGrams = max(0, record.proteinGrams ?? meal.proteinGrams)
+                meal.carbsGrams = max(0, record.carbsGrams ?? meal.carbsGrams)
+                meal.fatGrams = max(0, record.fatGrams ?? meal.fatGrams)
+                meal.updatedAt = .now
+                insertCorrection(
+                    entityType: "MealEntry",
+                    entityID: meal.id.uuidString,
+                    fieldName: "meal",
+                    oldValue: oldValue,
+                    newValue: meal.textDescription,
+                    date: meal.date,
+                    reason: record.note
+                )
+            } else if let meal = record.makeMealEntry() {
                 modelContext.insert(meal)
             }
         case .exercise:
-            if let exercise = record.makeExerciseEntry() {
+            if record.action == .update,
+               let idText = record.existingRecordID,
+               let id = UUID(uuidString: idText),
+               let exercise = exercises.first(where: { $0.id == id }) {
+                let oldValue = "\(exercise.workoutType) \(exercise.activeCalories)"
+                exercise.workoutType = record.workoutType ?? exercise.workoutType
+                exercise.durationMinutes = max(0, record.durationMinutes ?? exercise.durationMinutes)
+                exercise.activeCalories = max(0, record.activeCalories ?? exercise.activeCalories)
+                exercise.steps = max(0, record.steps ?? exercise.steps)
+                insertCorrection(
+                    entityType: "ExerciseEntry",
+                    entityID: exercise.id.uuidString,
+                    fieldName: "exercise",
+                    oldValue: oldValue,
+                    newValue: "\(exercise.workoutType) \(exercise.activeCalories)",
+                    date: exercise.date,
+                    reason: record.note
+                )
+            } else if let exercise = record.makeExerciseEntry() {
                 modelContext.insert(exercise)
             }
         case .checkIn:
@@ -551,20 +641,84 @@ struct CoachHomeView: View {
             if !dayLogs.contains(where: { $0.id == log.id }) {
                 modelContext.insert(log)
             }
+            let oldWeight = log.weightKg
             log.apply(record)
+            if record.action == .update, let newWeight = record.weightKg, oldWeight > 0 {
+                insertCorrection(
+                    entityType: "DayLog",
+                    entityID: day.dayKey,
+                    fieldName: "weightKg",
+                    oldValue: String(oldWeight),
+                    newValue: String(newWeight),
+                    date: day,
+                    reason: record.note.isEmpty ? "用户确认 AI 更正提案" : record.note
+                )
+                log.reportIsStale = true
+            }
             // 体重写 DayLog（单源）；仅当天同步到档案 currentWeightKg。
             if let weight = record.weightKg, weight > 0, Calendar.current.isDateInToday(day), let profile {
                 profile.currentWeightKg = weight
                 profile.updatedAt = .now
             }
+        case .foodAlias:
+            guard record.action == .remember else { break }
+            if let targetID = record.targetFoodOptionID,
+               let option = foodOptions.first(where: { $0.id == targetID }) {
+                option.addAliases(record.aliases)
+            } else if let option = foodOptions.first(where: { $0.matches(record.title) }) {
+                option.addAliases(record.aliases + [record.title])
+            }
         }
 
-        message.suggestedRecords = message.suggestedRecords.filter { $0.id != record.id }
+        for message in allMessages where message.suggestedRecords.contains(where: { $0.id == record.id }) {
+            message.suggestedRecords = message.suggestedRecords.filter { $0.id != record.id }
+        }
         do {
             try modelContext.save()
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func insertCorrection(
+        entityType: String,
+        entityID: String,
+        fieldName: String,
+        oldValue: String,
+        newValue: String,
+        date: Date,
+        reason: String
+    ) {
+        modelContext.insert(DataCorrection(
+            entityType: entityType,
+            entityID: entityID,
+            fieldName: fieldName,
+            oldValue: oldValue,
+            newValue: newValue,
+            effectiveDate: date,
+            reason: reason.isEmpty ? "用户确认 AI 更正提案" : reason,
+            source: .coachProposal
+        ))
+    }
+
+    private func proposalConfirmationText(_ proposal: RecordProposal) -> String {
+        var lines: [String] = []
+        if let old = proposal.oldValueSummary, !old.isEmpty {
+            lines.append("原值：\(old)")
+        }
+        lines.append("新值：\(proposal.title)")
+        if let weight = proposal.weightKg {
+            lines.append("体重：\(String(format: "%.2f", weight)) kg")
+            if let warning = TrendSafetyAnalyzer.weightAnomaly(
+                proposedKg: weight,
+                on: proposal.date ?? .now,
+                dayLogs: dayLogs
+            ) {
+                lines.append("注意：\(warning)")
+            }
+        }
+        if !proposal.note.isEmpty { lines.append(proposal.note) }
+        return lines.joined(separator: "\n")
     }
 
     @MainActor
@@ -811,6 +965,8 @@ private struct CoachMemoryEditor: View {
 
 private struct CoachChatBubble: View {
     let message: CoachChatMessage
+    var onUndo: (AppliedRecordRef) -> Void
+    var onEdit: (AppliedRecordRef) -> Void
     var onSaveRecord: (CoachSuggestedRecord) -> Void
 
     var body: some View {
@@ -828,11 +984,50 @@ private struct CoachChatBubble: View {
                 .background(message.role == .user ? Color.accentColor.opacity(0.16) : Color.cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cardCornerRadius))
 
+            if message.role == .assistant, !message.appliedRecords.isEmpty {
+                appliedRecordsView
+            }
+
             if message.role == .assistant, !message.suggestedRecords.isEmpty {
                 suggestedRecordsView
             }
         }
         .frame(maxWidth: .infinity, alignment: message.role == .user ? .trailing : .leading)
+    }
+
+    private var appliedRecordsView: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(message.appliedRecords) { ref in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("已记录 · \(ref.title)")
+                            .font(.caption.weight(.medium))
+                        if !ref.macroSummary.isEmpty {
+                            Text(ref.macroSummary)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    if ref.kind == .meal {
+                        Button("编辑") { onEdit(ref) }
+                            .font(.caption2)
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    Button("撤销") { onUndo(ref) }
+                        .font(.caption2)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.red)
+                }
+                .padding(10)
+                .background(Color.green.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cardCornerRadius))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// 教练正文用 Markdown 渲染（保留换行），让加粗、分点等格式正常显示；解析失败则原样展示。
@@ -876,7 +1071,7 @@ private struct CoachChatBubble: View {
 
     private var suggestedRecordsView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("可采纳 / 保存")
+            Text("待确认操作")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             ForEach(message.suggestedRecords) { record in
@@ -898,9 +1093,21 @@ private struct CoachChatBubble: View {
                     .foregroundStyle(.secondary)
                 Text(record.title)
                     .font(.subheadline.weight(.medium))
+                Text(actionTitle(record.action))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(
+                        record.action == .update
+                            ? Color.orange
+                            : Color.accentColor
+                    )
                 Spacer()
-                Image(systemName: "plus.circle.fill")
+                Image(systemName: record.action == .update ? "pencil.circle.fill" : "checkmark.circle.fill")
                     .foregroundStyle(Color.accentColor)
+            }
+            if let old = record.oldValueSummary, !old.isEmpty {
+                Text("原值：\(old)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             if record.kind == .meal, let macro = mealMacroText(record) {
                 Text(macro)
@@ -937,6 +1144,15 @@ private struct CoachChatBubble: View {
         case .meal: "fork.knife"
         case .exercise: "figure.run"
         case .checkIn: "square.and.pencil"
+        case .foodAlias: "tag"
+        }
+    }
+
+    private func actionTitle(_ action: RecordProposalAction) -> String {
+        switch action {
+        case .create: "新增"
+        case .update: "更正"
+        case .remember: "记住"
         }
     }
 }

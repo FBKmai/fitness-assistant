@@ -44,12 +44,17 @@ struct FoodOptionComponent: Codable, Identifiable, Hashable {
 struct FoodOptionEstimate: Codable {
     var name: String
     var kind: String?
+    var brand: String?
+    var aliases: [String]?
     var portionDescription: String
+    var servingWeightGrams: Double?
     var components: [FoodOptionComponent]
     var totalCalories: Double
     var proteinGrams: Double
     var carbsGrams: Double
     var fatGrams: Double
+    var fiberGrams: Double?
+    var sodiumMg: Double?
     var confidence: Double
     var recommendationScore: Double
     var recommendationReason: String
@@ -59,12 +64,19 @@ struct FoodOptionEstimate: Codable {
 struct FoodOptionSnapshot: Codable, Identifiable, Hashable {
     var id: UUID
     var name: String
+    var brand: String
+    var aliases: [String]
     var kind: String
     var portionDescription: String
+    var servingWeightGrams: Double
     var totalCalories: Double
     var proteinGrams: Double
     var carbsGrams: Double
     var fatGrams: Double
+    var fiberGrams: Double
+    var sodiumMg: Double
+    var dataSource: String
+    var confidence: Double
     var recommendationScore: Double
     var recommendationReason: String
     var components: [FoodOptionComponent]
@@ -74,15 +86,21 @@ struct FoodOptionSnapshot: Codable, Identifiable, Hashable {
 final class FoodOption {
     var id: UUID
     var name: String
+    var brand: String = ""
+    var aliasesJSON: String = "[]"
     var kindRaw: String = FoodOptionKind.single.rawValue
     var photoLocalPath: String?
     var sourceDescription: String
     var portionDescription: String
+    var servingWeightGrams: Double = 0
     var componentsJSON: String
     var totalCalories: Double
     var proteinGrams: Double
     var carbsGrams: Double
     var fatGrams: Double
+    var fiberGrams: Double = 0
+    var sodiumMg: Double = 0
+    var dataSource: String = "manual"
     var confidence: Double
     var recommendationScore: Double
     var recommendationReason: String
@@ -93,15 +111,21 @@ final class FoodOption {
     init(
         id: UUID = UUID(),
         name: String,
+        brand: String = "",
+        aliases: [String] = [],
         kind: FoodOptionKind = .single,
         photoLocalPath: String? = nil,
         sourceDescription: String = "",
         portionDescription: String = "",
+        servingWeightGrams: Double = 0,
         components: [FoodOptionComponent] = [],
         totalCalories: Double = 0,
         proteinGrams: Double = 0,
         carbsGrams: Double = 0,
         fatGrams: Double = 0,
+        fiberGrams: Double = 0,
+        sodiumMg: Double = 0,
+        dataSource: String = "manual",
         confidence: Double = 0,
         recommendationScore: Double = 0,
         recommendationReason: String = "",
@@ -111,15 +135,21 @@ final class FoodOption {
     ) {
         self.id = id
         self.name = name
+        self.brand = brand
+        self.aliasesJSON = Self.encodeStrings(aliases)
         self.kindRaw = kind.rawValue
         self.photoLocalPath = photoLocalPath
         self.sourceDescription = sourceDescription
         self.portionDescription = portionDescription
+        self.servingWeightGrams = servingWeightGrams
         self.componentsJSON = Self.encodeComponents(components)
         self.totalCalories = totalCalories
         self.proteinGrams = proteinGrams
         self.carbsGrams = carbsGrams
         self.fatGrams = fatGrams
+        self.fiberGrams = fiberGrams
+        self.sodiumMg = sodiumMg
+        self.dataSource = dataSource
         self.confidence = confidence
         self.recommendationScore = recommendationScore
         self.recommendationReason = recommendationReason
@@ -136,6 +166,36 @@ final class FoodOption {
     var components: [FoodOptionComponent] {
         get { Self.decodeComponents(componentsJSON) }
         set { componentsJSON = Self.encodeComponents(newValue) }
+    }
+
+    var aliases: [String] {
+        get { Self.decodeStrings(aliasesJSON) }
+        set { aliasesJSON = Self.encodeStrings(newValue) }
+    }
+
+    var normalizedSearchTerms: [String] {
+        ([name, brand] + aliases)
+            .map(Self.normalizeTerm)
+            .filter { !$0.isEmpty }
+    }
+
+    func matches(_ text: String) -> Bool {
+        let normalized = Self.normalizeTerm(text)
+        guard !normalized.isEmpty else { return false }
+        return normalizedSearchTerms.contains { term in
+            term == normalized || term.contains(normalized) || normalized.contains(term)
+        }
+    }
+
+    func addAliases(_ values: [String]) {
+        var merged = aliases
+        for value in values {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !matches(trimmed) else { continue }
+            merged.append(trimmed)
+        }
+        aliases = Array(merged.prefix(30))
+        updatedAt = .now
     }
 
     var macroEnergyTotal: Double {
@@ -161,12 +221,19 @@ final class FoodOption {
         FoodOptionSnapshot(
             id: id,
             name: name,
+            brand: brand,
+            aliases: aliases,
             kind: kind.title,
             portionDescription: portionDescription,
+            servingWeightGrams: servingWeightGrams,
             totalCalories: totalCalories,
             proteinGrams: proteinGrams,
             carbsGrams: carbsGrams,
             fatGrams: fatGrams,
+            fiberGrams: fiberGrams,
+            sodiumMg: sodiumMg,
+            dataSource: dataSource,
+            confidence: confidence,
             recommendationScore: recommendationScore,
             recommendationReason: recommendationReason,
             components: components
@@ -209,5 +276,25 @@ final class FoodOption {
     private static func decodeComponents(_ json: String) -> [FoodOptionComponent] {
         guard let data = json.data(using: .utf8) else { return [] }
         return (try? JSONDecoder().decode([FoodOptionComponent].self, from: data)) ?? []
+    }
+
+    private static func encodeStrings(_ values: [String]) -> String {
+        guard let data = try? JSONEncoder().encode(values) else { return "[]" }
+        return String(data: data, encoding: .utf8) ?? "[]"
+    }
+
+    private static func decodeStrings(_ json: String) -> [String] {
+        guard let data = json.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([String].self, from: data)) ?? []
+    }
+
+    private static func normalizeTerm(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "的", with: "")
+            .replacingOccurrences(of: "之前那个", with: "")
+            .replacingOccurrences(of: "之前的", with: "")
     }
 }

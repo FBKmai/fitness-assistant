@@ -8,6 +8,7 @@ enum CoachContextBuilder {
         exercises: [ExerciseEntry],
         foodOptions: [FoodOption],
         trainingPlans: [TrainingPlan],
+        trainingSessions: [TrainingSession] = [],
         memory: CoachMemory?,
         carryovers: [CoachDailyCarryoverSnapshot] = [],
         now: Date = .now,
@@ -46,6 +47,11 @@ enum CoachContextBuilder {
             proteinGrams: metrics.proteinGrams,
             carbsGrams: metrics.carbsGrams,
             fatGrams: metrics.fatGrams,
+            fiberGrams: metrics.fiberGrams,
+            vegetableGrams: metrics.vegetableGrams,
+            restingEnergySource: metrics.restingEnergySource.rawValue,
+            restingHeartRate: healthSnapshot?.restingHeartRate ?? todayLog?.restingHeartRate,
+            averageHeartRate: healthSnapshot?.averageHeartRate ?? todayLog?.averageHeartRate,
             confirmedMealCount: todayMeals.count,
             unconfirmedMealCount: 0,
             workoutCount: todayExercises.filter { !isDailyHealthAggregate($0) }.count,
@@ -90,7 +96,7 @@ enum CoachContextBuilder {
                 bodyMassIndex: metrics.bodyMassIndex,
                 gender: profile.gender.title,
                 age: profile.age,
-                bmr: metrics.restingCalories
+                bmr: metrics.bmrEstimate
             ),
             today: today,
             todayMeals: todayMeals.sorted { $0.date < $1.date }.map(mealSnapshot),
@@ -103,16 +109,33 @@ enum CoachContextBuilder {
                 .sorted { $0.updatedAt > $1.updatedAt }
                 .prefix(40)
                 .map(\.snapshot),
-            trainingPlans: trainingPlans
-                .sorted { $0.updatedAt > $1.updatedAt }
-                .prefix(5)
-                .map(trainingPlanSnapshot),
+            trainingPlans: [],
             memory: memory?.snapshot,
             recentCarryovers: carryovers
                 .filter { $0.date < todayStart }
                 .sorted { $0.date > $1.date }
                 .prefix(7)
                 .map { $0 },
+            trainingPerformance: trainingSessions
+                .sorted { $0.date > $1.date }
+                .prefix(20)
+                .map {
+                    CoachTrainingSessionSnapshot(
+                        id: $0.id,
+                        date: $0.date,
+                        title: $0.title,
+                        durationMinutes: $0.durationMinutes,
+                        activeCalories: $0.activeCalories,
+                        averageHeartRate: $0.averageHeartRate,
+                        maxHeartRate: $0.maxHeartRate,
+                        totalVolumeKg: $0.totalVolumeKg,
+                        setCount: $0.sets.count
+                    )
+                },
+            safetyAlerts: TrendSafetyAnalyzer.alerts(
+                dayLogs: dayLogs,
+                currentWeightKg: metrics.weightKg ?? profile.currentWeightKg
+            ).map(\.message),
             analysis: analysis,
             dataQualityNotes: analysis.dataQualityNotes
         )

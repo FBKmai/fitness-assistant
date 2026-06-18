@@ -169,6 +169,8 @@ struct MealEditorView: View {
     @State private var proteinGrams: String
     @State private var carbsGrams: String
     @State private var fatGrams: String
+    @State private var fiberGrams: String
+    @State private var vegetableGrams: String
     @State private var confidence: Double
     @State private var items: [MealFoodItem]
     @State private var selectedFoodOptionIDs: Set<UUID>
@@ -209,6 +211,8 @@ struct MealEditorView: View {
         _proteinGrams = State(initialValue: Self.numberText(meal?.proteinGrams, decimals: 1))
         _carbsGrams = State(initialValue: Self.numberText(meal?.carbsGrams, decimals: 1))
         _fatGrams = State(initialValue: Self.numberText(meal?.fatGrams, decimals: 1))
+        _fiberGrams = State(initialValue: Self.numberText(meal?.fiberGrams, decimals: 1))
+        _vegetableGrams = State(initialValue: Self.numberText(meal?.vegetableGrams, decimals: 0))
         _confidence = State(initialValue: meal?.confidence ?? 0)
         _items = State(initialValue: meal?.estimatedItems ?? [])
         _selectedFoodOptionIDs = State(initialValue: Set(meal?.foodOptionIDs ?? []))
@@ -393,6 +397,8 @@ struct MealEditorView: View {
                     nutrientInputRow("蛋白质", text: $proteinGrams, unit: "g", focus: .proteinGrams)
                     nutrientInputRow("碳水", text: $carbsGrams, unit: "g", focus: .carbsGrams)
                     nutrientInputRow("脂肪", text: $fatGrams, unit: "g", focus: .fatGrams)
+                    LabeledTextFieldRow(title: "膳食纤维", unit: "g", prompt: "选填", text: $fiberGrams)
+                    LabeledTextFieldRow(title: "蔬菜", unit: "g", prompt: "选填", text: $vegetableGrams)
                     if confidence > 0 {
                         MetricProgressBar(title: "AI 置信度", current: confidence, target: 1, tint: confidenceColor)
                             .padding(.vertical, 2)
@@ -641,6 +647,8 @@ struct MealEditorView: View {
             proteinGrams = String(format: "%.1f", estimate.proteinGrams)
             carbsGrams = String(format: "%.1f", estimate.carbsGrams)
             fatGrams = String(format: "%.1f", estimate.fatGrams)
+            fiberGrams = Self.numberText(estimate.fiberGrams, decimals: 1)
+            vegetableGrams = Self.numberText(estimate.vegetableGrams, decimals: 0)
             confidence = estimate.confidence
             items = estimate.items
             if textDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -683,6 +691,8 @@ struct MealEditorView: View {
                 editingMeal.proteinGrams = proteinGrams.doubleValue ?? 0
                 editingMeal.carbsGrams = carbsGrams.doubleValue ?? 0
                 editingMeal.fatGrams = fatGrams.doubleValue ?? 0
+                editingMeal.fiberGrams = fiberGrams.doubleValue ?? 0
+                editingMeal.vegetableGrams = vegetableGrams.doubleValue ?? 0
                 editingMeal.confidence = confidence
                 editingMeal.isConfirmed = true
                 editingMeal.updatedAt = .now
@@ -700,6 +710,8 @@ struct MealEditorView: View {
                     proteinGrams: proteinGrams.doubleValue ?? 0,
                     carbsGrams: carbsGrams.doubleValue ?? 0,
                     fatGrams: fatGrams.doubleValue ?? 0,
+                    fiberGrams: fiberGrams.doubleValue ?? 0,
+                    vegetableGrams: vegetableGrams.doubleValue ?? 0,
                     confidence: confidence,
                     isConfirmed: true
                 )
@@ -711,7 +723,7 @@ struct MealEditorView: View {
                 try createFoodOption(from: savedMeal, photoFileName: photoFileName)
                 try modelContext.save()
             }
-            await generateAndArchiveAdvice(for: savedMeal)
+            // 餐食点评不再在保存时自动生成；统一改由「教练」对话给出，避免重复 AI 调用与割裂体验。
             dismiss()
         } catch {
             AppLog.error("保存饮食记录失败：\(error.localizedDescription)", category: "饮食")
@@ -752,6 +764,9 @@ struct MealEditorView: View {
             proteinGrams: meal.proteinGrams,
             carbsGrams: meal.carbsGrams,
             fatGrams: meal.fatGrams,
+            fiberGrams: meal.fiberGrams,
+            sodiumMg: 0,
+            dataSource: "mealRecord",
             confidence: meal.confidence,
             recommendationScore: score,
             recommendationReason: "根据本次记录自动生成，建议后续在食物页补充营养表或重新用视觉 AI 校准。",

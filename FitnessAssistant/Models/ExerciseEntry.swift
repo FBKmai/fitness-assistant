@@ -11,6 +11,9 @@ final class ExerciseEntry {
     var activeCalories: Double
     var steps: Double
     var healthKitWorkoutID: String?
+    var averageHeartRate: Double? = nil
+    var maxHeartRate: Double? = nil
+    var trainingSessionID: UUID? = nil
     var createdAt: Date
 
     init(
@@ -22,6 +25,9 @@ final class ExerciseEntry {
         activeCalories: Double = 0,
         steps: Double = 0,
         healthKitWorkoutID: String? = nil,
+        averageHeartRate: Double? = nil,
+        maxHeartRate: Double? = nil,
+        trainingSessionID: UUID? = nil,
         createdAt: Date = .now
     ) {
         self.id = id
@@ -32,6 +38,9 @@ final class ExerciseEntry {
         self.activeCalories = activeCalories
         self.steps = steps
         self.healthKitWorkoutID = healthKitWorkoutID
+        self.averageHeartRate = averageHeartRate
+        self.maxHeartRate = maxHeartRate
+        self.trainingSessionID = trainingSessionID
         self.createdAt = createdAt
     }
 

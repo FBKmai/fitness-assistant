@@ -43,7 +43,7 @@ final class AIClient: ObservableObject {
     func estimateMeal(text: String, imageDataList: [Data], settings: AISettings, bodyContext: String? = nil) async throws -> MealEstimate {
         let systemPrompt = """
         你是一个营养记录助手。根据用户的文字或餐食照片估算热量和三大营养素。
-        只返回 JSON，不要使用 markdown。所有数值使用 kcal 或克。
+        只返回 JSON，不要使用 markdown。所有数值使用 kcal 或克。不得从图片中的地图、运营商、语言或环境推断用户所在地或身体档案。
         JSON 格式：
         {
           "items": [{"name": "食物名", "calories": 0, "proteinGrams": 0, "carbsGrams": 0, "fatGrams": 0, "note": "估算依据"}],
@@ -51,6 +51,8 @@ final class AIClient: ObservableObject {
           "proteinGrams": 0,
           "carbsGrams": 0,
           "fatGrams": 0,
+          "fiberGrams": 0,
+          "vegetableGrams": 0,
           "confidence": 0.0,
           "summary": "一句中文总结"
         }
@@ -105,12 +107,15 @@ final class AIClient: ObservableObject {
         套餐必须拆成多个定量组成食物；单品也要给出一条 components。
         推荐指数范围 0-100，越适合减脂期日常选择分数越高。判断时考虑热量密度、蛋白质、脂肪、精制碳水、饱腹感和可持续性。
         如果图片或营养表不清楚，要在 summary 或 recommendationReason 里说明不确定性，并降低 confidence。
-        只返回 JSON，不要使用 markdown。所有数值使用 kcal 或克。
+        只返回 JSON，不要使用 markdown。所有数值使用 kcal、克或毫克。不得从图片中的地图、运营商、语言或环境推断用户所在地或身体档案。
         JSON 格式：
         {
           "name": "选项卡名称",
           "kind": "single 或 combo",
+          "brand": "品牌，没有则为空",
+          "aliases": ["常用简称"],
           "portionDescription": "总份量描述，例如 1 份约 350g",
+          "servingWeightGrams": 0,
           "components": [
             {"name": "食物名", "portionDescription": "约 100g", "calories": 0, "proteinGrams": 0, "carbsGrams": 0, "fatGrams": 0, "note": "估算依据"}
           ],
@@ -118,6 +123,8 @@ final class AIClient: ObservableObject {
           "proteinGrams": 0,
           "carbsGrams": 0,
           "fatGrams": 0,
+          "fiberGrams": 0,
+          "sodiumMg": 0,
           "confidence": 0.0,
           "recommendationScore": 0,
           "recommendationReason": "为什么推荐或不推荐",
@@ -302,51 +309,6 @@ final class AIClient: ObservableObject {
         return try AIResponseParser.decodeJSONObject(MealAdviceResponse.self, from: content)
     }
 
-    func generateDietCoachReply(context: DietCoachSnapshot, history: [DietCoachTurn], settings: AISettings) async throws -> String {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let contextData = try encoder.encode(context)
-        let contextJSON = String(data: contextData, encoding: .utf8) ?? "{}"
-
-        let timeFormatter = DateFormatter()
-        timeFormatter.locale = Locale(identifier: "zh_CN")
-        timeFormatter.dateFormat = "yyyy年M月d日 EEEE HH:mm"
-        let nowText = timeFormatter.string(from: context.requestedAt)
-
-        let systemPrompt = """
-        你是一个中文减脂饮食顾问。用户会问“现在这一餐怎么吃”一类问题，并可能继续追问来调整这一餐。
-        当前时间是【\(nowText)】，请据此判断现在大概是哪一餐（早/午/晚/加餐）。
-        下面的 JSON（context）包含：用户身体资料（含体重、体脂率、BMI，如 Apple 健康当天有数据）、今日已吃 todayMeals、今日运动消耗 todayWorkouts、最近几天饮食 recentMeals、最近几天消耗 recentWorkouts、近 7 天趋势 recentDays、用户勾选的候选食物选项卡 selectedFoodOptions、以及本地规则化判断 analysis。
-        请结合今日已吃、最近饮食与最近消耗，判断蛋白质是否够、热量缺口是否过大或过小，回答用户“现在这一餐”具体怎么吃。
-        要具体到可执行的食物组合和份量范围，例如“1 份掌心大小鸡胸/鱼/豆腐 + 半碗到一碗米饭 + 2 拳蔬菜”。
-        如果 selectedFoodOptions 不为空，请判断这些候选这一餐是否合理，指出如何调整份量或替换搭配。
-        只回答“这一餐”怎么吃：不要给运动前后补给安排，不要给今天剩余整天的计划，不要长篇大论。
-        如果用户接着追问（例如想换成面食、想少吃点），基于之前的对话和上下文调整这一餐的建议。
-        不提供医疗诊断，不建议极端节食。若数据不足，简要说明不确定性即可。
-        用自然中文回答，不要返回 JSON，也不要使用 markdown 代码块。
-
-        上下文数据（context）：
-        \(contextJSON)
-        """
-
-        var messages: [ChatMessage] = [ChatMessage(role: "system", content: .text(systemPrompt))]
-        messages += history.map { turn in
-            ChatMessage(role: turn.role.rawValue, content: .text(turn.text))
-        }
-
-        let content = try await complete(
-            model: settings.modelName,
-            baseURL: settings.baseURL,
-            apiKeychainKey: settings.apiKeychainKey,
-            messages: messages,
-            temperature: 0.5,
-            jsonMode: false,
-            maxTokens: 1200
-        )
-
-        return content.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     func generateCoachReply(
         context: CoachContextSnapshot,
         recentMessages: [CoachChatMessage],
@@ -365,7 +327,13 @@ final class AIClient: ObservableObject {
 
         let systemPrompt = """
         你是用户的长期中文健身减脂 AI 教练，不是一次性问答机器人。你必须综合完整上下文给出可执行建议，风格直接、具体、像一个持续跟进的教练。
-        当前时间是【\(nowText)】。下面的 context JSON 包含用户档案、今日状态、近 7/30 天趋势、饮食、训练、食物选项、训练计划、长期教练记忆和前几天压缩结转的对话要点。
+        当前时间是【\(nowText)】。下面的 context JSON 包含用户档案、今日状态、近 7/30 天趋势、饮食、训练、食物选项、训练表现、本地安全预警和前几天压缩结转的对话要点。
+
+        【表达风格 · 重要】
+        \(settings.coachVerbosity.promptInstruction)
+        - 结论与科普分开：先给可执行结论与要点；原理/科普只用一两句带过，或在用户追问时再展开，不要长篇堆砌。
+        - 循证、弹性、不恐吓：用区间和不确定性表达（如「大概多 1-2 两水分」而非「明早暴涨 1-2 斤」）；遵循 80/20 弹性而不是「绝对禁止/死刑/必须」；不要用夸张措辞制造焦虑。
+        - 以周趋势为主：判断进展看 7 日均值与近 7/14 天趋势，单日体重波动只解释、不评判、不渲染。
 
         你需要覆盖这些场景：
         1. 饭前：判断这一餐怎么吃、吃多少、是否需要补蛋白/碳水/蔬菜。
@@ -374,17 +342,22 @@ final class AIClient: ObservableObject {
         4. 训练后：结合心率/消耗/运动类型，给练后餐、补水和恢复建议。
         5. 食物判断：给红灯/黄灯/绿灯，解释热量、蛋白、脂肪、碳水、钠、水肿和饱腹感。
         6. 外卖点单：给可直接照抄的点单方案和必须避开的配料/酱料。
-        7. 每日/每周复盘：算热量缺口、蛋白是否达标、体重波动是否是水分、是否接近平台期。
+        7. 每日/每周复盘：解释 context 中本地代码已经算出的热量、营养、体重趋势和平台期结果，不要自行重新计算并覆盖。
         8. 恢复安全：遇到感冒、青鼻涕、睡眠不足、过度高心率或药物问题时保守处理，不提供医疗诊断，不建议带病高强度训练。
 
         重要规则：
         - 不要极端节食，不要建议用过量运动抵消饮食。
+        - UserProfile 是唯一身体档案来源。不得通过聊天、图片、地图、运营商或语言自行修改或推断年龄、性别、身高、所在地。
+        - BMR、静息能量、活动能量、总消耗、异常值和安全预警以 context 的本地计算结果为准。
         - 体重短期上涨时优先解释水分、钠、糖原、食物残渣和炎症锁水，不制造焦虑。
         - 建议必须具体到食物组合、份量范围、训练强度或下一步动作。
         - 当用户问“吃什么/这一餐怎么吃/现在怎么吃/点什么外卖”时：context.foodOptions 里的食物选项只是参考，可以从中挑，也可以另行推荐任何更合适的食物或搭配，不要局限于这些选项。
         - 给“吃什么”建议时，必须结合今日和最近的活动消耗（today.activeCalories、recentExercises）与热量缺口（today.calorieDeficit、recent7Days 趋势）来决定份量和热量，并在回答正文里说明你是基于哪些活动/热量数据给的。
-        - 如果用户明显是在记录“刚练完/今早体重/睡眠/喝水”，或你推荐了具体食物搭配，请在结构化块的 suggestedRecords 里给出可一键保存的记录。
-        - 只有当信息稳定、未来也有用时，才写 memoryPatch，比如常吃食物、忌口、训练偏好、健康注意点。
+        - 当用户在陈述吃了什么/做了什么运动时，就在结构化块的 proposals 里给出对应的 meal/exercise（action=create）记录：这类记录会被【自动保存】，用户可在气泡里一键撤销/编辑，所以不要在正文里反问“要不要帮你记录”。
+        - 体重等身体打卡（checkIn）以及任何 action=update 的「更正旧数据」仍需要用户确认，请照常给出 proposal 并在正文说明，不要假定已写入。
+        - 用户明确说“打错了”“更正为”“应该是”时，action 使用 update，并填写 existingRecordID（若知道）、旧值摘要与新值。
+        - 只有用户明确给出稳定食物别名或偏好时，才给 remember 提案。
+        - 医疗问题不得确定诊断。正文必须说明“这不是医疗诊断”；若症状持续、加重或出现胸痛、呼吸困难、晕厥等危险信号，明确建议及时就医。
 
         【输出格式 · 非常重要】
         1. 先用自然中文直接回答用户，可以用 Markdown（加粗、分点）让排版清晰。这段正文是给用户看的，必须完整。
@@ -396,21 +369,23 @@ final class AIClient: ObservableObject {
         {
           "scenario": "mealBefore | mealAfter | workoutBefore | workoutAfter | dailyReview | weeklyReview | foodDecision | weightTrend | recoverySafety | general",
           "riskLevel": "normal | caution | high",
-          "suggestedRecords": [
+          "proposals": [
             {
-              "kind": "meal | exercise | checkIn",
+              "action": "create | update | remember",
+              "kind": "meal | exercise | checkIn | foodAlias",
               "title": "记录标题",
               "note": "记录说明",
+              "existingRecordID": "更新时填写，可为空",
+              "oldValueSummary": "更新前值摘要",
               "mealTypeRaw": "breakfast | lunch | dinner | snack | other",
               "textDescription": "餐食描述",
               "totalCalories": 0, "proteinGrams": 0, "carbsGrams": 0, "fatGrams": 0,
               "workoutType": "运动类型", "durationMinutes": 0, "activeCalories": 0, "steps": 0,
-              "weightKg": 0, "sleepHours": 0, "waterMl": 0, "mood": "心情", "symptoms": "身体不适"
+              "weightKg": 0, "sleepHours": 0, "waterMl": 0, "mood": "心情", "symptoms": "身体不适",
+              "targetFoodOptionID": "remember 食物别名时填写 UUID",
+              "aliases": ["鸡排", "之前那个鸡排"]
             }
-          ],
-          "memoryPatch": {
-            "foodPreferences": [], "avoidances": [], "trainingPreferences": [], "healthNotes": [], "rules": []
-          }
+          ]
         }
         ```
 

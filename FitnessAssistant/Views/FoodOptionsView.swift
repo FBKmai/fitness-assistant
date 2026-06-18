@@ -122,6 +122,8 @@ struct FoodOptionEditorView: View {
     private let maxImageCount = 4
 
     @State private var name: String
+    @State private var brand: String
+    @State private var aliasesText: String
     @State private var kind: FoodOptionKind
     @State private var sourceDescription: String
     @State private var portionDescription: String
@@ -129,6 +131,9 @@ struct FoodOptionEditorView: View {
     @State private var proteinGrams: String
     @State private var carbsGrams: String
     @State private var fatGrams: String
+    @State private var servingWeightGrams: String
+    @State private var fiberGrams: String
+    @State private var sodiumMg: String
     @State private var confidence: Double
     @State private var recommendationScore: Double
     @State private var recommendationReason: String
@@ -157,6 +162,8 @@ struct FoodOptionEditorView: View {
     init(option: FoodOption? = nil) {
         self.option = option
         _name = State(initialValue: option?.name ?? "")
+        _brand = State(initialValue: option?.brand ?? "")
+        _aliasesText = State(initialValue: option?.aliases.joined(separator: "、") ?? "")
         _kind = State(initialValue: option?.kind ?? .single)
         _sourceDescription = State(initialValue: option?.sourceDescription ?? "")
         _portionDescription = State(initialValue: option?.portionDescription ?? "")
@@ -164,6 +171,9 @@ struct FoodOptionEditorView: View {
         _proteinGrams = State(initialValue: Self.numberText(option?.proteinGrams, decimals: 1))
         _carbsGrams = State(initialValue: Self.numberText(option?.carbsGrams, decimals: 1))
         _fatGrams = State(initialValue: Self.numberText(option?.fatGrams, decimals: 1))
+        _servingWeightGrams = State(initialValue: Self.numberText(option?.servingWeightGrams, decimals: 1))
+        _fiberGrams = State(initialValue: Self.numberText(option?.fiberGrams, decimals: 1))
+        _sodiumMg = State(initialValue: Self.numberText(option?.sodiumMg, decimals: 0))
         _confidence = State(initialValue: option?.confidence ?? 0)
         _recommendationScore = State(initialValue: option?.recommendationScore ?? 70)
         _recommendationReason = State(initialValue: option?.recommendationReason ?? "")
@@ -201,6 +211,8 @@ struct FoodOptionEditorView: View {
                 }
 
                 Section("选项卡") {
+                    TextField("品牌（选填）", text: $brand)
+                    TextField("别名，用顿号分隔", text: $aliasesText)
                     Picker("类型", selection: $kind) {
                         ForEach(FoodOptionKind.allCases) { kind in
                             Text(kind.title).tag(kind)
@@ -274,6 +286,9 @@ struct FoodOptionEditorView: View {
                     nutrientInputRow("蛋白质", text: $proteinGrams, unit: "g", focus: .protein)
                     nutrientInputRow("碳水", text: $carbsGrams, unit: "g", focus: .carbs)
                     nutrientInputRow("脂肪", text: $fatGrams, unit: "g", focus: .fat)
+                    LabeledTextFieldRow(title: "每份重量", unit: "g", prompt: "选填", text: $servingWeightGrams)
+                    LabeledTextFieldRow(title: "膳食纤维", unit: "g", prompt: "选填", text: $fiberGrams)
+                    LabeledTextFieldRow(title: "钠", unit: "mg", prompt: "选填", text: $sodiumMg)
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -493,14 +508,21 @@ struct FoodOptionEditorView: View {
             if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 name = estimate.name
             }
+            brand = estimate.brand ?? brand
+            if let aliases = estimate.aliases, !aliases.isEmpty {
+                aliasesText = aliases.joined(separator: "、")
+            }
             if let kindRaw = estimate.kind, let estimatedKind = FoodOptionKind(rawValue: kindRaw) {
                 kind = estimatedKind
             }
             portionDescription = estimate.portionDescription
+            servingWeightGrams = Self.numberText(estimate.servingWeightGrams, decimals: 1)
             totalCalories = String(format: "%.0f", estimate.totalCalories)
             proteinGrams = String(format: "%.1f", estimate.proteinGrams)
             carbsGrams = String(format: "%.1f", estimate.carbsGrams)
             fatGrams = String(format: "%.1f", estimate.fatGrams)
+            fiberGrams = Self.numberText(estimate.fiberGrams, decimals: 1)
+            sodiumMg = Self.numberText(estimate.sodiumMg, decimals: 0)
             confidence = min(max(estimate.confidence, 0), 1)
             recommendationScore = min(max(estimate.recommendationScore, 0), 100)
             recommendationReason = estimate.recommendationReason
@@ -534,15 +556,21 @@ struct FoodOptionEditorView: View {
 
             if let option {
                 option.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                option.brand = brand.trimmingCharacters(in: .whitespacesAndNewlines)
+                option.aliases = parsedAliases
                 option.kind = kind
                 option.photoLocalPath = photoFileName
                 option.sourceDescription = sourceDescription
                 option.portionDescription = portionDescription
+                option.servingWeightGrams = servingWeightGrams.doubleValue ?? 0
                 option.components = components
                 option.totalCalories = totalCalories.doubleValue ?? 0
                 option.proteinGrams = proteinGrams.doubleValue ?? 0
                 option.carbsGrams = carbsGrams.doubleValue ?? 0
                 option.fatGrams = fatGrams.doubleValue ?? 0
+                option.fiberGrams = fiberGrams.doubleValue ?? 0
+                option.sodiumMg = sodiumMg.doubleValue ?? 0
+                option.dataSource = confidence > 0 ? "visionAI" : "manual"
                 option.confidence = confidence
                 option.recommendationScore = min(max(recommendationScore, 0), 100)
                 option.recommendationReason = recommendationReason
@@ -551,15 +579,21 @@ struct FoodOptionEditorView: View {
             } else {
                 modelContext.insert(FoodOption(
                     name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                    brand: brand.trimmingCharacters(in: .whitespacesAndNewlines),
+                    aliases: parsedAliases,
                     kind: kind,
                     photoLocalPath: photoFileName,
                     sourceDescription: sourceDescription,
                     portionDescription: portionDescription,
+                    servingWeightGrams: servingWeightGrams.doubleValue ?? 0,
                     components: components,
                     totalCalories: totalCalories.doubleValue ?? 0,
                     proteinGrams: proteinGrams.doubleValue ?? 0,
                     carbsGrams: carbsGrams.doubleValue ?? 0,
                     fatGrams: fatGrams.doubleValue ?? 0,
+                    fiberGrams: fiberGrams.doubleValue ?? 0,
+                    sodiumMg: sodiumMg.doubleValue ?? 0,
+                    dataSource: confidence > 0 ? "visionAI" : "manual",
                     confidence: confidence,
                     recommendationScore: min(max(recommendationScore, 0), 100),
                     recommendationReason: recommendationReason,
@@ -572,6 +606,13 @@ struct FoodOptionEditorView: View {
             AppLog.error("保存食物选项卡失败：\(error.localizedDescription)", category: "食物选项")
             errorMessage = "保存选项卡失败：\(error.localizedDescription)"
         }
+    }
+
+    private var parsedAliases: [String] {
+        aliasesText
+            .components(separatedBy: CharacterSet(charactersIn: "、,，\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     private func syncTotalsFromComponents() {
@@ -694,6 +735,12 @@ struct FoodOptionCard: View {
                             .font(.caption)
                             .foregroundStyle(scoreColor(option.recommendationScore))
                     }
+                    if !option.brand.isEmpty || !option.aliases.isEmpty {
+                        Text(([option.brand] + option.aliases).filter { !$0.isEmpty }.joined(separator: " · "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                     HStack(spacing: 12) {
                         MacroLabel(name: "蛋白", grams: option.proteinGrams, color: .macroProtein)
                         MacroLabel(name: "碳水", grams: option.carbsGrams, color: .macroCarbs)
@@ -711,6 +758,11 @@ struct FoodOptionCard: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+            }
+            if option.fiberGrams > 0 || option.sodiumMg > 0 {
+                Text("膳食纤维 \(String(format: "%.1f", option.fiberGrams))g · 钠 \(Int(option.sodiumMg.rounded()))mg")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 6)
