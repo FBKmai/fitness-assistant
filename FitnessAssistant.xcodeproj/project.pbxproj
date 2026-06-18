@@ -59,6 +59,7 @@
 		FA2000000000000000000035 /* DataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000035 /* DataStore.swift */; };
 		FA2000000000000000000036 /* StructuredHealthModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000036 /* StructuredHealthModels.swift */; };
 		FA2000000000000000000037 /* TrendSafetyAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000037 /* TrendSafetyAnalyzer.swift */; };
+		FA20000000000000000000D2 /* FoodDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA10000000000000000000D2 /* FoodDatabase.swift */; };
 		FA2000000000000000000038 /* GeminiImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000038 /* GeminiImportService.swift */; };
 		FA2000000000000000000032 /* DayMetricsCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1000000000000000000032 /* DayMetricsCalculatorTests.swift */; };
 /* End PBXBuildFile section */
@@ -130,6 +131,7 @@
 		FA1000000000000000000035 /* DataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStore.swift; sourceTree = "<group>"; };
 		FA1000000000000000000036 /* StructuredHealthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StructuredHealthModels.swift; sourceTree = "<group>"; };
 		FA1000000000000000000037 /* TrendSafetyAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendSafetyAnalyzer.swift; sourceTree = "<group>"; };
+		FA10000000000000000000D2 /* FoodDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoodDatabase.swift; sourceTree = "<group>"; };
 		FA1000000000000000000038 /* GeminiImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiImportService.swift; sourceTree = "<group>"; };
 		FA1000000000000000000032 /* DayMetricsCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayMetricsCalculatorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -240,6 +242,7 @@
 				FA1000000000000000000034 /* DayLogMigration.swift */,
 				FA1000000000000000000035 /* DataStore.swift */,
 				FA1000000000000000000037 /* TrendSafetyAnalyzer.swift */,
+				FA10000000000000000000D2 /* FoodDatabase.swift */,
 				FA1000000000000000000038 /* GeminiImportService.swift */,
 			);
 			path = Services;
@@ -439,6 +442,7 @@
 				FA2000000000000000000035 /* DataStore.swift in Sources */,
 				FA2000000000000000000036 /* StructuredHealthModels.swift in Sources */,
 				FA2000000000000000000037 /* TrendSafetyAnalyzer.swift in Sources */,
+				FA20000000000000000000D2 /* FoodDatabase.swift in Sources */,
 				FA2000000000000000000038 /* GeminiImportService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

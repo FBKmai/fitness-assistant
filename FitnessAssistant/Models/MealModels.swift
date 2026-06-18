@@ -9,6 +9,10 @@ struct MealFoodItem: Codable, Identifiable, Hashable {
     var carbsGrams: Double
     var fatGrams: Double
     var note: String
+    /// AI 估的份量克数（用于「查库换算」）。可选以兼容旧记录。
+    var gramsEstimate: Double?
+    /// 数值来源："database"=本地成分库换算，"ai"=模型估算。可选以兼容旧记录。
+    var dataSource: String?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -17,6 +21,8 @@ struct MealFoodItem: Codable, Identifiable, Hashable {
         case carbsGrams
         case fatGrams
         case note
+        case gramsEstimate = "grams"
+        case dataSource
     }
 
     init(
@@ -26,7 +32,9 @@ struct MealFoodItem: Codable, Identifiable, Hashable {
         proteinGrams: Double,
         carbsGrams: Double,
         fatGrams: Double,
-        note: String = ""
+        note: String = "",
+        gramsEstimate: Double? = nil,
+        dataSource: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -35,6 +43,8 @@ struct MealFoodItem: Codable, Identifiable, Hashable {
         self.carbsGrams = carbsGrams
         self.fatGrams = fatGrams
         self.note = note
+        self.gramsEstimate = gramsEstimate
+        self.dataSource = dataSource
     }
 }
 

@@ -42,11 +42,12 @@ final class AIClient: ObservableObject {
 
     func estimateMeal(text: String, imageDataList: [Data], settings: AISettings, bodyContext: String? = nil) async throws -> MealEstimate {
         let systemPrompt = """
-        你是一个营养记录助手。根据用户的文字或餐食照片估算热量和三大营养素。
+        你是一个营养记录助手。根据用户的文字或餐食照片，把这餐拆成具体食物，并为每个食物给出【常见单一食物名】和【估算份量克数 grams】。
+        重点是识别「吃了什么、大概多少克」；热量与三大营养素你也给一份估算，但 App 会优先用本地食物成分库按克数换算，所以 name 尽量用通用、单一的食物名（如「米饭」「鸡胸肉」「西兰花」），便于匹配。
         只返回 JSON，不要使用 markdown。所有数值使用 kcal 或克。不得从图片中的地图、运营商、语言或环境推断用户所在地或身体档案。
         JSON 格式：
         {
-          "items": [{"name": "食物名", "calories": 0, "proteinGrams": 0, "carbsGrams": 0, "fatGrams": 0, "note": "估算依据"}],
+          "items": [{"name": "食物名", "grams": 0, "calories": 0, "proteinGrams": 0, "carbsGrams": 0, "fatGrams": 0, "note": "估算依据"}],
           "totalCalories": 0,
           "proteinGrams": 0,
           "carbsGrams": 0,
@@ -90,7 +91,39 @@ final class AIClient: ObservableObject {
             maxTokens: 4000
         )
 
-        return try AIResponseParser.decodeJSONObject(MealEstimate.self, from: content)
+        let estimate = try AIResponseParser.decodeJSONObject(MealEstimate.self, from: content)
+        return Self.resolveWithDatabase(estimate)
+    }
+
+    /// 用本地食物成分库按克数换算各项宏量，覆盖 AI 自报数值（匹配不到才保留 AI 估算）。
+    /// 这样热量/营养来自标准成分表而非模型臆测，误差不随天数累积。
+    static func resolveWithDatabase(_ estimate: MealEstimate) -> MealEstimate {
+        var result = estimate
+        var items: [MealFoodItem] = []
+        for var item in estimate.items {
+            if let grams = item.gramsEstimate, grams > 0,
+               let m = FoodDatabase.shared.macros(for: item.name, grams: grams) {
+                item.calories = m.kcal
+                item.proteinGrams = m.protein
+                item.carbsGrams = m.carbs
+                item.fatGrams = m.fat
+                item.dataSource = "database"
+                let portion = "约\(Int(grams.rounded()))g·按成分库换算"
+                item.note = item.note.isEmpty ? portion : "\(portion)；\(item.note)"
+            } else {
+                item.dataSource = "ai"
+            }
+            items.append(item)
+        }
+        result.items = items
+        // 有任意一项命中库时，总量按各项重算，保证一致性。
+        if items.contains(where: { $0.dataSource == "database" }) {
+            result.totalCalories = items.reduce(0) { $0 + $1.calories }
+            result.proteinGrams = items.reduce(0) { $0 + $1.proteinGrams }
+            result.carbsGrams = items.reduce(0) { $0 + $1.carbsGrams }
+            result.fatGrams = items.reduce(0) { $0 + $1.fatGrams }
+        }
+        return result
     }
 
     func estimateFoodOption(
