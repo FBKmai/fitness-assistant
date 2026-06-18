@@ -313,6 +313,7 @@ final class AIClient: ObservableObject {
         context: CoachContextSnapshot,
         recentMessages: [CoachChatMessage],
         imageDataList: [Data] = [],
+        intradayDigest: String = "",
         settings: AISettings
     ) async throws -> CoachReplyResult {
         let encoder = JSONEncoder()
@@ -325,11 +326,15 @@ final class AIClient: ObservableObject {
         timeFormatter.dateFormat = "yyyy年M月d日 EEEE HH:mm"
         let nowText = timeFormatter.string(from: context.requestedAt)
 
+        let digestBlock = intradayDigest.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? ""
+            : "\n【今日早些时候的对话要点（已压缩，下面只附最近几条原文）】\n\(intradayDigest)\n"
+
         let systemPrompt = """
         你是用户的长期中文健身减脂 AI 教练，不是一次性问答机器人。你必须综合完整上下文给出可执行建议，风格直接、具体、像一个持续跟进的教练。
         当前时间是【\(nowText)】。下面的 context JSON 包含用户档案、今日状态、近 7/30 天趋势、饮食、训练、食物选项、训练表现、本地安全预警和前几天压缩结转的对话要点。
         其中：今天的逐餐看 todayMeals；要按某一天回顾饮食，用 recentDailyDiets（已按天分组，每天含逐餐 meals 与当天合计、体重/睡眠/喝水）——不要用扁平的 recentMeals 自己猜哪顿属于哪天。
-
+        \(digestBlock)
         【表达风格 · 重要】
         \(settings.coachVerbosity.promptInstruction)
         - 结论与科普分开：先给可执行结论与要点；原理/科普只用一两句带过，或在用户追问时再展开，不要长篇堆砌。
@@ -425,6 +430,44 @@ final class AIClient: ObservableObject {
         // 教练以「自然文本 + 末尾可选 ```json 结构化块」返回，解析绝不抛错：
         // 正文一定能拿到，结构化块解析失败只丢按钮、不丢正文，从根上消除“JSON 无法解析”。
         return AIResponseParser.parseCoachReply(from: content)
+    }
+
+    /// 日内滚动压缩：把同一天较早的对话压成简短「今日早些时候要点」纯文本，
+    /// 与已有的 previousDigest 合并，供后续请求替代被截断的原文，降低长对话精度损失。
+    func summarizeIntraday(
+        previousDigest: String,
+        olderMessages: [CoachChatMessage],
+        settings: AISettings
+    ) async throws -> String {
+        let transcript = olderMessages
+            .sorted { $0.createdAt < $1.createdAt }
+            .map { ($0.role == .user ? "用户：" : "教练：") + $0.text }
+            .joined(separator: "\n")
+
+        let prevBlock = previousDigest.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? ""
+            : "已有要点（请在此基础上合并更新，不要丢失其中仍有用的信息）：\n\(previousDigest)\n\n"
+
+        let systemPrompt = """
+        你在压缩「同一天内」教练与用户较早的对话，生成第二段对话仍需记住的要点。
+        只保留对后续仍有用的事实：今天已吃/已练/体重/睡眠/喝水、用户偏好与忌口、教练给过的关键结论与待办。
+        用简洁中文要点列出，总长不超过 200 字。只输出要点本身，不要解释、不要 JSON、不要 markdown 代码块。
+        """
+        let userPrompt = "\(prevBlock)需要压缩的较早对话：\n\(transcript)"
+
+        let content = try await complete(
+            model: settings.modelName,
+            baseURL: settings.baseURL,
+            apiKeychainKey: settings.apiKeychainKey,
+            messages: [
+                ChatMessage(role: "system", content: .text(systemPrompt)),
+                ChatMessage(role: "user", content: .text(userPrompt))
+            ],
+            temperature: 0.2,
+            jsonMode: false,
+            maxTokens: 600
+        )
+        return content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func generateCoachDayCarryover(

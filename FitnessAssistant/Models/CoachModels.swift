@@ -627,6 +627,10 @@ final class CoachChatSession {
     var carryoverEnabled: Bool = true
     var carryoverJSON: String = ""
     var compressedAt: Date? = nil
+    /// 日内滚动压缩：把同一天较早的对话压成「今日早些时候要点」，避免长对话超窗丢精度。新增字段带默认值。
+    var intradayDigest: String = ""
+    /// intradayDigest 已覆盖的（今日）消息条数。
+    var intradayDigestCount: Int = 0
     var createdAt: Date
     var updatedAt: Date
 
@@ -639,6 +643,8 @@ final class CoachChatSession {
         carryoverEnabled: Bool = true,
         carryover: CoachDailyCarryover? = nil,
         compressedAt: Date? = nil,
+        intradayDigest: String = "",
+        intradayDigestCount: Int = 0,
         createdAt: Date = .now,
         updatedAt: Date = .now
     ) {
@@ -650,6 +656,8 @@ final class CoachChatSession {
         self.carryoverEnabled = carryoverEnabled
         self.carryoverJSON = Self.encode(carryover)
         self.compressedAt = compressedAt
+        self.intradayDigest = intradayDigest
+        self.intradayDigestCount = intradayDigestCount
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

@@ -441,12 +441,34 @@ struct CoachHomeView: View {
         if !recent.contains(where: { $0.id == userMessage.id }) {
             recent.append(userMessage)
         }
+
+        // 日内滚动压缩：同一天对话过长时，把较早消息压成「今日早些时候要点」，
+        // 之后只发要点 + 最近若干条原文，降低长对话超窗导致的精度损失。
+        if recent.count - activeSession.intradayDigestCount > 16 {
+            let keepRecent = 10
+            let olderCount = max(0, recent.count - keepRecent)
+            if olderCount > activeSession.intradayDigestCount {
+                let older = Array(recent.prefix(olderCount))
+                if let digest = try? await aiClient.summarizeIntraday(
+                    previousDigest: activeSession.intradayDigest,
+                    olderMessages: older,
+                    settings: settings
+                ), !digest.isEmpty {
+                    activeSession.intradayDigest = digest
+                    activeSession.intradayDigestCount = olderCount
+                    activeSession.updatedAt = .now
+                    try? modelContext.save()
+                }
+            }
+        }
+
         let attachedImages = imageDataList
         do {
             let result = try await aiClient.generateCoachReply(
                 context: context,
                 recentMessages: recent,
                 imageDataList: attachedImages,
+                intradayDigest: activeSession.intradayDigest,
                 settings: settings
             )
             insertAssistantMessage(result, context: context, session: activeSession)
