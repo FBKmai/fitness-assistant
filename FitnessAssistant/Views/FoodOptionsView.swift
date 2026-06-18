@@ -124,6 +124,7 @@ struct FoodOptionEditorView: View {
     @State private var name: String
     @State private var brand: String
     @State private var aliasesText: String
+    @State private var barcode: String
     @State private var kind: FoodOptionKind
     @State private var sourceDescription: String
     @State private var portionDescription: String
@@ -164,6 +165,7 @@ struct FoodOptionEditorView: View {
         _name = State(initialValue: option?.name ?? "")
         _brand = State(initialValue: option?.brand ?? "")
         _aliasesText = State(initialValue: option?.aliases.joined(separator: "、") ?? "")
+        _barcode = State(initialValue: option?.barcode ?? "")
         _kind = State(initialValue: option?.kind ?? .single)
         _sourceDescription = State(initialValue: option?.sourceDescription ?? "")
         _portionDescription = State(initialValue: option?.portionDescription ?? "")
@@ -213,6 +215,8 @@ struct FoodOptionEditorView: View {
                 Section("选项卡") {
                     TextField("品牌（选填）", text: $brand)
                     TextField("别名，用顿号分隔", text: $aliasesText)
+                    TextField("条码（选填，扫码记餐用）", text: $barcode)
+                        .keyboardType(.numberPad)
                     Picker("类型", selection: $kind) {
                         ForEach(FoodOptionKind.allCases) { kind in
                             Text(kind.title).tag(kind)
@@ -558,6 +562,7 @@ struct FoodOptionEditorView: View {
                 option.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
                 option.brand = brand.trimmingCharacters(in: .whitespacesAndNewlines)
                 option.aliases = parsedAliases
+                option.barcode = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
                 option.kind = kind
                 option.photoLocalPath = photoFileName
                 option.sourceDescription = sourceDescription
@@ -582,6 +587,7 @@ struct FoodOptionEditorView: View {
                     brand: brand.trimmingCharacters(in: .whitespacesAndNewlines),
                     aliases: parsedAliases,
                     kind: kind,
+                    barcode: barcode.trimmingCharacters(in: .whitespacesAndNewlines),
                     photoLocalPath: photoFileName,
                     sourceDescription: sourceDescription,
                     portionDescription: portionDescription,

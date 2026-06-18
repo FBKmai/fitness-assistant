@@ -89,6 +89,8 @@ final class FoodOption {
     var brand: String = ""
     var aliasesJSON: String = "[]"
     var kindRaw: String = FoodOptionKind.single.rawValue
+    /// 商品条码（EAN/UPC 等），扫码记餐用于精确命中。空表示未绑定。新增字段带默认值便于轻量迁移。
+    var barcode: String = ""
     var photoLocalPath: String?
     var sourceDescription: String
     var portionDescription: String
@@ -114,6 +116,7 @@ final class FoodOption {
         brand: String = "",
         aliases: [String] = [],
         kind: FoodOptionKind = .single,
+        barcode: String = "",
         photoLocalPath: String? = nil,
         sourceDescription: String = "",
         portionDescription: String = "",
@@ -138,6 +141,7 @@ final class FoodOption {
         self.brand = brand
         self.aliasesJSON = Self.encodeStrings(aliases)
         self.kindRaw = kind.rawValue
+        self.barcode = barcode
         self.photoLocalPath = photoLocalPath
         self.sourceDescription = sourceDescription
         self.portionDescription = portionDescription

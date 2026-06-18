@@ -314,11 +314,14 @@ struct FoodHubView: View {
 
 struct DietCalorieDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(DataStore.self) private var dataStore
     @Query private var profiles: [UserProfile]
     @Query(sort: \MealEntry.date, order: .reverse) private var meals: [MealEntry]
     @Query(sort: \ExerciseEntry.date, order: .reverse) private var exercises: [ExerciseEntry]
     @Query(sort: \DayLog.date, order: .reverse) private var dayLogs: [DayLog]
     @Query(sort: \TrainingPlan.updatedAt, order: .reverse) private var trainingPlans: [TrainingPlan]
+    @Query(sort: \TrainingSession.date, order: .reverse) private var trainingSessions: [TrainingSession]
+    @Query(sort: \DataCorrection.createdAt, order: .reverse) private var corrections: [DataCorrection]
 
     @State private var selectedDate = Calendar.current.startOfDay(for: .now)
     @State private var presentingNewMeal: NewMealRequest?
@@ -329,6 +332,8 @@ struct DietCalorieDetailView: View {
     @State private var showingFoodOptions = false
     @State private var showingTrends = false
     @State private var showingTrainingPlan = false
+    @State private var showingBarcode = false
+    @State private var didAutoSync = false
 
     private var profile: UserProfile? { profiles.first }
 
@@ -367,15 +372,40 @@ struct DietCalorieDetailView: View {
                     Button { showingFoodOptions = true } label: {
                         Label("常吃食物选项", systemImage: "rectangle.stack")
                     }
+                    Divider()
+                    Button { showingBarcode = true } label: {
+                        Label("扫码记餐", systemImage: "barcode.viewfinder")
+                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+            }
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    Task { await syncHealth(silent: false) }
+                } label: {
+                    if dataStore.isWorking {
+                        ProgressView()
+                    } else {
+                        Label("同步健康", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
+                .disabled(dataStore.isWorking)
+                .accessibilityLabel("同步 Apple 健康")
             }
         }
         .navigationDestination(isPresented: $showingMeals) { MealsView() }
         .navigationDestination(isPresented: $showingFoodOptions) { FoodOptionsView() }
         .navigationDestination(isPresented: $showingTrends) { SummariesView() }
         .navigationDestination(isPresented: $showingTrainingPlan) { TrainingPlanListView() }
+        .sheet(isPresented: $showingBarcode) {
+            BarcodeQuickLogSheet(date: selectedDate)
+        }
+        .task {
+            guard !didAutoSync else { return }
+            didAutoSync = true
+            await syncHealth(silent: true)
+        }
         .sheet(item: $presentingNewMeal) { request in
             MealEditorView(initialMealType: request.mealType, initialDate: request.date, autoPresentCamera: request.autoCamera)
         }
@@ -502,6 +532,16 @@ struct DietCalorieDetailView: View {
                     .controlSize(.small)
                 }
             }
+            Divider()
+            HStack(spacing: 6) {
+                Image(systemName: "heart.text.square")
+                    .font(.caption)
+                    .foregroundStyle(.pink)
+                Text(dataStore.statusMessage)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardStyle()
@@ -540,6 +580,19 @@ struct DietCalorieDetailView: View {
         log.waterMl = ml
         log.updatedAt = .now
         try? modelContext.save()
+    }
+
+    /// 同步 Apple 健康：拉取每日活动能量/步数/训练等，去重 upsert 成 ExerciseEntry 与当天 DayLog。
+    private func syncHealth(silent: Bool) async {
+        guard let profile else { return }
+        await dataStore.syncHealthOnly(
+            profile: profile,
+            exercises: exercises,
+            dayLogs: dayLogs,
+            trainingSessions: trainingSessions,
+            corrections: corrections,
+            silent: silent
+        )
     }
 
     // MARK: 顶部周日期条

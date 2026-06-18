@@ -41,6 +41,7 @@
 		FA2000000000000000000028 /* CoachHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002C /* CoachHomeView.swift */; };
 		FA2000000000000000000029 /* FoodHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002D /* FoodHubView.swift */; };
 		FA20000000000000000000D1 /* DataHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA10000000000000000000D1 /* DataHubView.swift */; };
+		FA20000000000000000000D3 /* BarcodeScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA10000000000000000000D3 /* BarcodeScannerView.swift */; };
 		FA200000000000000000002A /* CoachContextBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002E /* CoachContextBuilderTests.swift */; };
 		FA200000000000000000002B /* CoachReplyResultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000002F /* CoachReplyResultTests.swift */; };
 		FA2000000000000000000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FA100000000000000000001C /* Assets.xcassets */; };
@@ -109,6 +110,7 @@
 		FA100000000000000000002C /* CoachHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachHomeView.swift; sourceTree = "<group>"; };
 		FA100000000000000000002D /* FoodHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoodHubView.swift; sourceTree = "<group>"; };
 		FA10000000000000000000D1 /* DataHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataHubView.swift; sourceTree = "<group>"; };
+		FA10000000000000000000D3 /* BarcodeScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarcodeScannerView.swift; sourceTree = "<group>"; };
 		FA1000000000000000000019 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		FA100000000000000000001A /* FitnessAssistant.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FitnessAssistant.entitlements; sourceTree = "<group>"; };
 		FA100000000000000000001B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -263,6 +265,7 @@
 				FA1000000000000000000026 /* FoodOptionsView.swift */,
 				FA100000000000000000002D /* FoodHubView.swift */,
 				FA10000000000000000000D1 /* DataHubView.swift */,
+				FA10000000000000000000D3 /* BarcodeScannerView.swift */,
 				FA1000000000000000000028 /* TrainingPlanView.swift */,
 				FA10000000000000000000A1 /* DebugLogView.swift */,
 			);
@@ -432,6 +435,7 @@
 				FA2000000000000000000022 /* FoodOptionsView.swift in Sources */,
 				FA2000000000000000000029 /* FoodHubView.swift in Sources */,
 				FA20000000000000000000D1 /* DataHubView.swift in Sources */,
+				FA20000000000000000000D3 /* BarcodeScannerView.swift in Sources */,
 				FA2000000000000000000024 /* TrainingPlanView.swift in Sources */,
 				FA20000000000000000000A0 /* AppLogStore.swift in Sources */,
 				FA20000000000000000000A1 /* DebugLogView.swift in Sources */,
