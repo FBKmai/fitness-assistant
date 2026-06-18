@@ -339,6 +339,7 @@ struct DietCalorieDetailView: View {
                 weekStrip
                 ringCard
                 macroCard
+                habitsCard
                 if dayConfirmedMeals.isEmpty {
                     emptyMealsState
                 } else {
@@ -463,6 +464,70 @@ struct DietCalorieDetailView: View {
             .sorted { $0.date < $1.date }
             .suffix(30)
             .map { $0 }
+    }
+
+    // MARK: 今日打卡卡（喝水/睡眠等闭环维度）
+
+    private var habitsCard: some View {
+        let log = dayLogs.first { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) }
+        let water = log?.waterMl ?? 0
+        return VStack(alignment: .leading, spacing: 12) {
+            Label("今日打卡", systemImage: "drop.fill")
+                .font(.headline)
+            HStack(spacing: 18) {
+                trendStat("喝水", "\(Int(water.rounded())) ml")
+                trendStat("睡眠", log?.sleepHours.map { String(format: "%.1f h", $0) } ?? "—")
+            }
+            HStack(spacing: 8) {
+                waterButton("+250ml", 250)
+                waterButton("+500ml", 500)
+                if water > 0 {
+                    Button(role: .destructive) { setWater(0) } label: {
+                        Label("清零", systemImage: "arrow.counterclockwise")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardStyle()
+    }
+
+    private func waterButton(_ title: String, _ ml: Double) -> some View {
+        Button {
+            addWater(ml)
+        } label: {
+            Text(title).font(.caption.weight(.medium))
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .tint(.blue)
+    }
+
+    private func todayOrSelectedLog() -> DayLog {
+        let day = Calendar.current.startOfDay(for: selectedDate)
+        if let existing = dayLogs.first(where: { Calendar.current.isDate($0.date, inSameDayAs: day) }) {
+            return existing
+        }
+        let log = DayLog(date: day)
+        modelContext.insert(log)
+        return log
+    }
+
+    private func addWater(_ ml: Double) {
+        let log = todayOrSelectedLog()
+        log.waterMl = (log.waterMl ?? 0) + ml
+        log.updatedAt = .now
+        try? modelContext.save()
+    }
+
+    private func setWater(_ ml: Double) {
+        let log = todayOrSelectedLog()
+        log.waterMl = ml
+        log.updatedAt = .now
+        try? modelContext.save()
     }
 
     // MARK: 顶部周日期条
