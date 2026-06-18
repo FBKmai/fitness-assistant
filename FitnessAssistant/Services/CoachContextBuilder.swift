@@ -78,6 +78,29 @@ enum CoachContextBuilder {
             .prefix(30)
             .map(exerciseSnapshot)
 
+        // 按天分组的近 N 天逐餐饮食（不含今天）：让教练永远清楚「哪顿属于哪天」。
+        let dietGroups = Dictionary(grouping: meals.filter { $0.date < todayStart }) {
+            calendar.startOfDay(for: $0.date)
+        }
+        let recentDailyDiets: [CoachDayDiet] = dietGroups.keys
+            .sorted(by: >)
+            .prefix(14)
+            .map { day in
+                let dayMeals = (dietGroups[day] ?? []).sorted { $0.date < $1.date }
+                let log = dayLogs.first { calendar.isDate($0.date, inSameDayAs: day) }
+                return CoachDayDiet(
+                    date: day,
+                    meals: dayMeals.map(mealSnapshot),
+                    intakeCalories: dayMeals.reduce(0) { $0 + $1.totalCalories },
+                    proteinGrams: dayMeals.reduce(0) { $0 + $1.proteinGrams },
+                    carbsGrams: dayMeals.reduce(0) { $0 + $1.carbsGrams },
+                    fatGrams: dayMeals.reduce(0) { $0 + $1.fatGrams },
+                    weightKg: valueIfPositive(log?.weightKg),
+                    sleepHours: log?.sleepHours,
+                    waterMl: log?.waterMl
+                )
+            }
+
         // 单一日表后不再需要 mergedDays 缝合：直接对 DayLog 取近 N 天。
         let recentLogs = dayLogs
             .filter { $0.date < todayStart }
@@ -103,6 +126,7 @@ enum CoachContextBuilder {
             todayExercises: todayExercises.sorted { $0.date < $1.date }.map(exerciseSnapshot),
             recentMeals: Array(recentMeals),
             recentExercises: Array(recentExercises),
+            recentDailyDiets: recentDailyDiets,
             recent7Days: recent7Days,
             recent30Days: recent30Days,
             foodOptions: foodOptions

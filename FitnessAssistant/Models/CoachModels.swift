@@ -581,6 +581,20 @@ struct CoachDailyCarryoverSnapshot: Codable, Hashable {
     var nextDayFocus: [String]
 }
 
+/// 某一天的「按天分组」饮食：当天逐餐 + 当天合计 + 当天体重/睡眠/喝水。
+/// 用来替代扁平的 recentMeals，让教练永远清楚「哪顿属于哪天」。
+struct CoachDayDiet: Codable, Hashable {
+    var date: Date
+    var meals: [CoachMealSnapshot]
+    var intakeCalories: Double
+    var proteinGrams: Double
+    var carbsGrams: Double
+    var fatGrams: Double
+    var weightKg: Double?
+    var sleepHours: Double?
+    var waterMl: Double?
+}
+
 struct CoachContextSnapshot: Codable {
     var requestedAt: Date
     var profile: CoachProfileSnapshot
@@ -589,6 +603,8 @@ struct CoachContextSnapshot: Codable {
     var todayExercises: [CoachExerciseSnapshot]
     var recentMeals: [CoachMealSnapshot]
     var recentExercises: [CoachExerciseSnapshot]
+    /// 近 7–14 天「按天分组」的逐餐饮食（今天不含在内，今天看 todayMeals）。可选以兼容旧消息快照。
+    var recentDailyDiets: [CoachDayDiet]? = nil
     var recent7Days: [CoachDaySummarySnapshot]
     var recent30Days: [CoachDaySummarySnapshot]
     var foodOptions: [FoodOptionSnapshot]

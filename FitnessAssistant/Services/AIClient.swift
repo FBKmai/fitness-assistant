@@ -328,6 +328,7 @@ final class AIClient: ObservableObject {
         let systemPrompt = """
         你是用户的长期中文健身减脂 AI 教练，不是一次性问答机器人。你必须综合完整上下文给出可执行建议，风格直接、具体、像一个持续跟进的教练。
         当前时间是【\(nowText)】。下面的 context JSON 包含用户档案、今日状态、近 7/30 天趋势、饮食、训练、食物选项、训练表现、本地安全预警和前几天压缩结转的对话要点。
+        其中：今天的逐餐看 todayMeals；要按某一天回顾饮食，用 recentDailyDiets（已按天分组，每天含逐餐 meals 与当天合计、体重/睡眠/喝水）——不要用扁平的 recentMeals 自己猜哪顿属于哪天。
 
         【表达风格 · 重要】
         \(settings.coachVerbosity.promptInstruction)
